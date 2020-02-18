@@ -105,7 +105,7 @@ class ConvBlock(nn.Module):
         self.hp = hp
         super().__init__()
         self.dropout = nn.Dropout(self.hp.dropout_rate)
-        self.conv = nn.Conv2d(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.stride, self.hp.padding)
+        self.conv = nn.Conv2d(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.hp.stride, self.hp.padding)
         self.BN = nn.BatchNorm2d(self.hp.hidden_channels)
 
     def forward(self, x):
