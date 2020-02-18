@@ -92,11 +92,12 @@ class Unet(nn.Module):
 
 
 class HyperparametersCatStack(Hyperparameters):
-    def __init__(self, N_layers, kernel, padding, **kwargs):
+    def __init__(self, N_layers, kernel, padding, stride, **kwargs):
         super().__init__(**kwargs)
         self.N_layers = N_layers
         self.kernel = kernel
         self.padding = padding
+        self.stride = stride
 
 
 class ConvBlock(nn.Module):
@@ -104,7 +105,7 @@ class ConvBlock(nn.Module):
         self.hp = hp
         super().__init__()
         self.dropout = nn.Dropout(self.hp.dropout_rate)
-        self.conv = nn.Conv2d(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, 1, self.hp.padding)
+        self.conv = nn.Conv2d(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.stride, self.hp.padding)
         self.BN = nn.BatchNorm2d(self.hp.hidden_channels)
 
     def forward(self, x):
