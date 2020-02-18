@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-from typing import List, Callable
+from typing import List, Callable, ClassVar
 from collections import namedtuple
 from copy import deepcopy
 
@@ -14,7 +14,7 @@ class Hyperparameters:
         self.dropout_rate = dropout_rate
 
 class Container(nn.Module):
-    def __init__(self, hp: Hyperparameters, model: nn.Module, conv: nn.Module, bn: nn.Module):
+    def __init__(self, hp: Hyperparameters, model: ClassVar, conv: ClassVar, bn: ClassVar):
         super().__init__()
         self.hp = hp
         self.out_channels = self.hp.out_channels
@@ -34,13 +34,13 @@ class Container(nn.Module):
 
 
 class Container1d(Container):
-    def __init__(self, hp: Hyperparameters, model: nn.Module):
-        super().__init__(hp, model=model, conv=nn.Conv1d, bn=nn.BatchNorm1d)
+    def __init__(self, hp: Hyperparameters, model: ClassVar):
+        super().__init__(hp, model, nn.Conv1d,  nn.BatchNorm1d)
 
 
 class Container2d(Container):
-    def __init__(self, hp: Hyperparameters, model: nn.Module):
-        super().__init__(hp, model=model, conv=nn.Conv2d, bn=nn.BatchNorm2d)
+    def __init__(self, hp: Hyperparameters, model: ClassVar):
+        super().__init__(hp, model, nn.Conv2d,  nn.BatchNorm2d)
 
 
 class HyperparametersUnet(Hyperparameters):
@@ -71,9 +71,9 @@ class Unet2d(nn.Module):
         self.BN_up = nn.BatchNorm2d(self.nf_input)
 
         if len(self.hp.nf_table) > 1:
-            self.unet2 = Unet(self.hp)
+            self.unet = Unet2d(self.hp)
         else:
-            self.unet2 = None
+            self.unet = None
 
         self.reduce = nn.Conv2d(2*self.nf_input, self.nf_input, 1, 1)
         self.BN_out = nn.BatchNorm2d(self.nf_input) # optional ?
@@ -84,11 +84,11 @@ class Unet2d(nn.Module):
         y = self.conv_down(y)
         y = F.relu(self.BN_down(y)) # y = self.BN_down(F.relu(y, inplace=True))
 
-        if self.unet2 is not None:
+        if self.unet is not None:
             if self.hp.pool:
                 y_size = y.size()
                 y, indices = F.max_pool2d(y, 2, stride=2, return_indices=True)
-            y = self.unet2(y)
+            y = self.unet(y)
             if self.hp.pool:
                 y = F.max_unpool2d(y, indices, 2, stride=2, output_size=y_size)
 
@@ -111,7 +111,7 @@ class HyperparametersCatStack(Hyperparameters):
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, hp: Hyperparameters, conv: nn.Module, bn: nn.Module):
+    def __init__(self, hp: Hyperparameters, conv:ClassVar, bn: ClassVar):
         self.hp = hp
         super().__init__()
         self.dropout = nn.Dropout(self.hp.dropout_rate)
@@ -126,12 +126,12 @@ class ConvBlock(nn.Module):
 
 
 class CatStack(nn.Module):
-    def __init__(self, hp: HyperparametersCatStack, conv: nn.Module, bn: nn.Module, conv_block: ConvBlock):
+    def __init__(self, hp: HyperparametersCatStack, conv: ClassVar, bn: ClassVar, conv_block: ClassVar):
         super().__init__()
         self.hp = hp
         self.conv_stack = nn.ModuleList()
         for i in range(self.hp.N_layers):
-            self.conv_stack.append(convblock(hp))
+            self.conv_stack.append(conv_block(hp))
         self.reduce = conv((1 + self.hp.N_layers) * self.hp.hidden_channels, self.hp.hidden_channels, 1, 1)
         self.BN = bn(self.hp.hidden_channels)
 
@@ -148,21 +148,42 @@ class CatStack(nn.Module):
 
 class ConvBlock1d(ConvBlock):
     def __init__(self, hp: HyperparametersCatStack):
-        super().__init__(hp=hp, conv=nn.Conv1d, bn=nn.BatchNorm1d)
+        super().__init__(hp, nn.Conv1d,  nn.BatchNorm1d)
 
 
-class CatStack1d(nn.Module):
+class CatStack1d(CatStack):
 
-    def __init__(self, hp: Hyperparameters):
-        super().__init__(hp, conv=nn.Conv1d, bn=nn.BatchNorm1d, conv_block=ConvBlock1d)
+    def __init__(self, hp: HyperparametersCatStack):
+        super().__init__(hp, nn.Conv1d,  nn.BatchNorm1d, ConvBlock1d)
 
 
 class ConvBlock2d(ConvBlock):
     def __init__(self, hp: HyperparametersCatStack):
-        super().__init__(hp=hp, conv=nn.Conv2d, bn=nn.BatchNorm2d)
+        super().__init__(hp, nn.Conv2d,  nn.BatchNorm2d)
 
 
-class CatStack2d(nn.Module):
+class CatStack2d(CatStack):
 
-    def __init__(self, hp: Hyperparameters):
-        super().__init__(hp, conv=nn.Conv1d, bn=nn.BatchNorm2d, conv_block=ConvBlock2d)
+    def __init__(self, hp: HyperparametersCatStack):
+        super().__init__(hp, nn.Conv1d, nn.BatchNorm2d, ConvBlock2d)
+
+
+def self_test():
+    hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=3, stride=1, in_channels=1, out_channels=1, hidden_channels=2, dropout_rate=0.1)
+    cs2d = CatStack2d(hpcs)
+    cb2d = ConvBlock2d(hpcs)
+    cs1d = CatStack1d(hpcs)
+    cs2d = ConvBlock1d(hpcs)
+    hpun = HyperparametersUnet(nf_table=[2,2,2], kernel_table=[3,3], stride_table=[1,1,1], pool=True, in_channels=1, hidden_channels=2, out_channels=1, dropout_rate=0.1)
+    un2d = Unet2d(hpun)
+    c1dcs = Container1d(hpcs, CatStack1d)
+    c2dcs = Container2d(hpcs, CatStack2d)
+    cddun = Container2d(hpun, Unet2d)
+
+    print("It seems to work: classes could be instantiated")
+
+def main():
+    self_test()
+
+if __name__ == '__main__':
+    main()
