@@ -15,8 +15,10 @@ setuptools.setup(
     url="https://github.com/source-data/ai",
     packages=setuptools.find_packages(),
     install_requires=[
+        "numpy",
         "torch",
-        "pillow"
+        "pillow",
+        "python-dotenv"
     ],
     # keywords="",
     classifiers=(
