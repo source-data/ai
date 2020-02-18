@@ -14,15 +14,15 @@ class Hyperparameters:
         self.dropout_rate = dropout_rate
 
 class Container(nn.Module):
-    def __init__(self, hp: Hyperparameters, model: nn.Module):
+    def __init__(self, hp: Hyperparameters, model: nn.Module, conv: nn.Module, bn: nn.Module):
         super().__init__()
         self.hp = hp
         self.out_channels = self.hp.out_channels
-        self.adaptor = nn.Conv2d(self.hp.in_channels, self.hp.hidden_channels, 1, 1)
-        self.BN_adapt = nn.BatchNorm2d(self.hp.hidden_channels)
+        self.adaptor = conv(self.hp.in_channels, self.hp.hidden_channels, 1, 1)
+        self.BN_adapt = bn(self.hp.hidden_channels)
         self.model = model(self.hp)
-        self.compress = nn.Conv2d(self.hp.hidden_channels, self.hp.out_channels, 1, 1)
-        self.BN_out = nn.BatchNorm2d(self.hp.out_channels)
+        self.compress = conv(self.hp.hidden_channels, self.hp.out_channels, 1, 1)
+        self.BN_out = bn(self.hp.out_channels)
 
     def forward(self, x):
         x = self.adaptor(x)
@@ -31,6 +31,16 @@ class Container(nn.Module):
         z = self.compress(z)
         z = self.BN_out(F.relu(z, inplace=True)) # need to try without to see if it messes up average gray level
         return z
+
+
+class Container1d(Container):
+    def __init__(self, hp: Hyperparameters, model: nn.Module):
+        super().__init__(hp, model=model, conv=nn.Conv1d, bn=nn.BatchNorm1d)
+
+
+class Container2d(Container):
+    def __init__(self, hp: Hyperparameters, model: nn.Module):
+        super().__init__(hp, model=model, conv=nn.Conv2d, bn=nn.BatchNorm2d)
 
 
 class HyperparametersUnet(Hyperparameters):
@@ -43,7 +53,7 @@ class HyperparametersUnet(Hyperparameters):
         self.pool = pool
 
 
-class Unet(nn.Module):
+class Unet2d(nn.Module):
     def __init__(self, hp: HyperparametersUnet):
         super().__init__()
         self.hp = deepcopy(hp) # pop() will modify lists in place
@@ -101,12 +111,12 @@ class HyperparametersCatStack(Hyperparameters):
 
 
 class ConvBlock(nn.Module):
-    def __init__(self, hp: Hyperparameters):
+    def __init__(self, hp: Hyperparameters, conv: nn.Module, bn: nn.Module):
         self.hp = hp
         super().__init__()
         self.dropout = nn.Dropout(self.hp.dropout_rate)
-        self.conv = nn.Conv2d(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.hp.stride, self.hp.padding)
-        self.BN = nn.BatchNorm2d(self.hp.hidden_channels)
+        self.conv = conv(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.hp.stride, self.hp.padding)
+        self.BN = bn(self.hp.hidden_channels)
 
     def forward(self, x):
         x = self.dropout(x)
@@ -116,15 +126,14 @@ class ConvBlock(nn.Module):
 
 
 class CatStack(nn.Module):
-
-    def __init__(self, hp: Hyperparameters):
+    def __init__(self, hp: HyperparametersCatStack, conv: nn.Module, bn: nn.Module, conv_block: ConvBlock):
         super().__init__()
         self.hp = hp
         self.conv_stack = nn.ModuleList()
         for i in range(self.hp.N_layers):
-            self.conv_stack.append(ConvBlock(hp))
-        self.reduce = nn.Conv2d((1 + self.hp.N_layers) * self.hp.hidden_channels, self.hp.hidden_channels, 1, 1)
-        self.BN = nn.BatchNorm2d(self.hp.hidden_channels)
+            self.conv_stack.append(convblock(hp))
+        self.reduce = conv((1 + self.hp.N_layers) * self.hp.hidden_channels, self.hp.hidden_channels, 1, 1)
+        self.BN = bn(self.hp.hidden_channels)
 
     def forward(self, x):
         x_list = [x]
@@ -135,3 +144,25 @@ class CatStack(nn.Module):
         x = self.reduce(x)
         y = self.BN(F.relu(x, inplace=True))
         return y
+
+
+class ConvBlock1d(ConvBlock):
+    def __init__(self, hp: HyperparametersCatStack):
+        super().__init__(hp=hp, conv=nn.Conv1d, bn=nn.BatchNorm1d)
+
+
+class CatStack1d(nn.Module):
+
+    def __init__(self, hp: Hyperparameters):
+        super().__init__(hp, conv=nn.Conv1d, bn=nn.BatchNorm1d, conv_block=ConvBlock1d)
+
+
+class ConvBlock2d(ConvBlock):
+    def __init__(self, hp: HyperparametersCatStack):
+        super().__init__(hp=hp, conv=nn.Conv2d, bn=nn.BatchNorm2d)
+
+
+class CatStack2d(nn.Module):
+
+    def __init__(self, hp: Hyperparameters):
+        super().__init__(hp, conv=nn.Conv1d, bn=nn.BatchNorm2d, conv_block=ConvBlock2d)
