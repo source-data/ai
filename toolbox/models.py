@@ -53,8 +53,8 @@ class HyperparametersUnet(Hyperparameters):
         self.pool = pool
 
 
-class Unet2d(nn.Module):
-    def __init__(self, hp: HyperparametersUnet):
+class Unet(nn.Module):
+    def __init__(self, hp: HyperparametersUnet, conv: ClassVar, convT: ClassVar, bn: ClassVar, pool: Callable, unpool: Callable):
         super().__init__()
         self.hp = deepcopy(hp) # pop() will modify lists in place
         self.nf_input = self.hp.nf_table[0]
@@ -65,32 +65,35 @@ class Unet2d(nn.Module):
         self.dropout_rate = self.hp.dropout_rate
 
         self.dropout = nn.Dropout(self.dropout_rate)
-        self.conv_down = nn.Conv2d(self.nf_input, self.nf_output, self.kernel, self.stride)
-        self.BN_down = nn.BatchNorm2d(self.nf_output)
-        self.conv_up = nn.ConvTranspose2d(self.nf_output, self.nf_input, self.kernel, self.stride)
-        self.BN_up = nn.BatchNorm2d(self.nf_input)
+        self.conv_down = conv(self.nf_input, self.nf_output, self.kernel, self.stride)
+        self.BN_down = bn(self.nf_output)
+        self.pool = pool
+        self.conv_up = convT(self.nf_output, self.nf_input, self.kernel, self.stride)
+        self.unpool = unpool
+        self.BN_up = bn(self.nf_input)
 
         if len(self.hp.nf_table) > 1:
-            self.unet = Unet2d(self.hp)
+            self.unet = self.__class__(self.hp)
         else:
             self.unet = None
 
-        self.reduce = nn.Conv2d(2*self.nf_input, self.nf_input, 1, 1)
-        self.BN_out = nn.BatchNorm2d(self.nf_input) # optional ?
+        self.reduce = conv(2*self.nf_input, self.nf_input, 1, 1)
+        self.BN_out = bn(self.nf_input)
+
 
     def forward(self, x):
 
         y = self.dropout(x)
         y = self.conv_down(y)
-        y = F.relu(self.BN_down(y)) # y = self.BN_down(F.relu(y, inplace=True))
+        y = self.BN_down(F.relu(y, inplace=True))
 
         if self.unet is not None:
             if self.hp.pool:
                 y_size = y.size()
-                y, indices = F.max_pool2d(y, 2, stride=2, return_indices=True)
+                y, indices = self.pool(y, 2, stride=2, return_indices=True)
             y = self.unet(y)
             if self.hp.pool:
-                y = F.max_unpool2d(y, indices, 2, stride=2, output_size=y_size)
+                y = self.unpool(y, indices, 2, stride=2, output_size=y_size)
 
         y = self.dropout(y)
         y = self.conv_up(y)
@@ -99,6 +102,16 @@ class Unet2d(nn.Module):
         y = self.reduce(y)
         y = self.BN_out(F.relu(y, inplace=True))
         return y
+
+
+class Unet1d(Unet):
+    def __init__(self, hp: HyperparametersUnet):
+        super().__init__(hp, nn.Conv1d, nn.ConvTranspose1d, nn.BatchNorm1d, F.adaptive_max_pool1d, F.max_unpool1d)
+
+
+class Unet2d(Unet):
+    def __init__(self, hp: HyperparametersUnet):
+        super().__init__(hp, nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d, F.adaptive_max_pool2d, F.max_unpool2d)
 
 
 class HyperparametersCatStack(Hyperparameters):
@@ -178,7 +191,8 @@ def self_test():
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
-    cddun = Container2d(hpun, Unet2d)
+    c1dun = Container1d(hpun, Unet1d)
+    c2dun = Container2d(hpun, Unet2d)
 
     print("It seems to work: classes could be instantiated")
 
