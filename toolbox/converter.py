@@ -4,13 +4,12 @@
 
 import argparse
 import torch
+import os
 from functools import lru_cache
 from copy import copy
 from typing import List
-from .utils import timer
-from .. import config
 
-NBITS = config.nbits
+NBITS = int(os.getenv('NBITS'))
 
 class Error(Exception):
     """Base class for exceptions in this module."""
@@ -52,7 +51,7 @@ class Converter():
     """
     Conversion operations between strings and tensors.
     """
-    def __init__(self, dtype:torch.dtype=torch.float):
+    def __init__(self,):
         self.dtype = dtype
 
     def encode(self, input_string:str) -> torch.Tensor:
@@ -61,23 +60,19 @@ class Converter():
     def decode(self, t: torch.Tensor) -> str:
         raise NotImplementedError
 
-@lru_cache(maxsize=1024)
-def code2bits(code):
-    bits = torch.Tensor([code >> i & 1 for i in range(NBITS)])
-    return bits
-
-@lru_cache(maxsize=1024)
-def cached_zeroed(L, dtype):
-    t = torch.zeros(1, NBITS, L, dtype=dtype)
-    return t
 
 class ConverterNBITS(Converter):
 
-    def __init__(self, dtype:torch.dtype=torch.float):
-       super(ConverterNBITS, self).__init__(dtype)
 
-    
-    def encode(self, input_string: str) -> torch.Tensor:
+    def __init__(self, nbits):
+        self.nbits = nbits
+
+    @lru_cache(maxsize=1024)
+    def code2bits(self, code):
+        bits = torch.Tensor([code >> i & 1 for i in range(self.nbits)])
+        return bits
+
+    def encode(self, input_string: str, dtype:torch.dtype=torch.float) -> torch.Tensor:
         """
         Encodes an input string into a 3D tensor.
         Args
@@ -89,13 +84,13 @@ class ConverterNBITS(Converter):
         L = len(input_string)
         t = torch.Tensor(0)
         if L > 0:
-            t = cached_zeroed(L, self.dtype).clone()
+            t = torch.zeros(1, self.nbits, L, dtype=dtype)
             for i in range(L):
                 code = ord(input_string[i])
                 try:
-                    t[0, : , i] = code2bits(code)
+                    t[0, : , i] = self.code2bits(code)
                 except IndexError:
-                    t[0, : , i] = code2bits(ord('?'))
+                    t[0, : , i] = self.code2bits(ord('?'))
         return t
 
     def decode(self, t: torch.Tensor) -> str:
@@ -111,7 +106,7 @@ class ConverterNBITS(Converter):
         str = ""
         for i in range(L):
             code = 0
-            for j in range(NBITS):
+            for j in range(self.nbits):
                 bit = t[0, j, i]
                 try:
                     bit = int(bit)
@@ -131,6 +126,8 @@ class ConverterNBITS(Converter):
                 print(t[0, : , i].view(-1))
                 str += '?'
         return str
+
+CONVERTER = ConverterNBITS(NBITS)
 
 class StringList:
     _N = 0
@@ -204,21 +201,20 @@ class TString:
         self._s = []
         self._L = 0 # length
         self._N = 0 # number of strings in the list, or depth
-        converter = ConverterNBITS(dtype=self.dtype)
         if isinstance(x, str):
             x = StringList([x]) if x else StringList()
         if isinstance(x, torch.Tensor):
-            assert x.dim() == 3 and x.size(1) == NBITS
+            assert x.dim() == 3 and x.size(1) == CONVERTER.nbits
             self._t = x
             self._L = self._t.size(2)
             self._N = self._t.size(0)
             for i in range(self.depth):
-                self._s.append(converter.decode(x[i:i+1, :, : ])) # i:
+                self._s.append(CONVERTER.decode(x[i:i+1, :, : ])) # i:
         elif isinstance(x, StringList):
             if x:
                 self._s = x.words
                 self._N = x.depth
-                t_list = [converter.encode(ex) for ex in x]
+                t_list = [CONVERTER.encode(ex, dtype=dtype) for ex in x]
                 self._t = torch.cat(t_list, 0)
                 self._L = self._t.size(2)
                 assert self._N == self._t.size(0)
@@ -296,18 +292,20 @@ class TString:
 
 
 def self_test(input_string: str):
-    encoded = ConverterNBITS().encode(input_string)
-    decode_encoded = ConverterNBITS().decode(encoded)
+    encoded = CONVERTER.encode(input_string)
+    decode_encoded = CONVERTER.decode(encoded)
     assert input_string == decode_encoded, f"{input_string}<>{decode_encoded}"
     print("the decoded of the encoded:", TString(TString(StringList([input_string, input_string])).tensor).toStringList())
 
     a = TString("a")
     b = TString("b")
     assert (a + b).toStringList().words == StringList(["ab"]).words
+    print("It seems it works!")
 
 def main():
     # more systematic tests in test.test_converter
-    parser = config.create_argument_parser_with_defaults(description="Encode decode string into binary tensors")
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    parser = argparse.ArgumentParser(description="conversion", formatter_class=formatter_class)
     parser.add_argument('input_string', nargs='?', default= "αβγ∂this is so ☾😎 😎 L ‼️" + u'\uE000', help="The string to convert")
     args = parser.parse_args()
     input_string = args.input_string
