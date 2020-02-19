@@ -4,7 +4,7 @@
 import os
 import pickle
 import torch
-from .models import HyperparametersCatStack, Container1d, CatStack1d
+from .models import HyperparametersCatStack, Container1d, CatStack1d, HyperparametersUnet, Container2d, Unet2d
 from copy import deepcopy, copy
 from datetime import datetime
 from zipfile import ZipFile
@@ -60,13 +60,22 @@ def load_model(model_path, container: ClassVar, sub_module: ClassVar):
 def self_test():
     try:
         os.mkdir('/tmp/test')
+        x = torch.zeros(2, 1, 4)
+
         hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=3, stride=1, in_channels=1, out_channels=1, hidden_channels=2, dropout_rate=0.1)
         c1dcs = Container1d(hpcs, CatStack1d)
-        x = torch.zeros(2, 1, 4)
         y = c1dcs(x)
-        saved_path = export_model(c1dcs, '/tmp/test', 'test_model')
+        saved_path = export_model(c1dcs, '/tmp/test', 'test_1')
         print(f"saved {saved_path}")
         loaded = load_model(saved_path, Container1d, CatStack1d)
+        print(loaded)
+
+        hpun = HyperparametersUnet(nf_table=[2,2,2], kernel_table=[3,3], stride_table=[1,1,1], pool=True, in_channels=1, hidden_channels=2, out_channels=1, dropout_rate=0.1)
+        c2dun = Container2d(hpun, Unet2d)
+        y = c1dcs(x)
+        saved_path = export_model(c2dun, '/tmp/test', 'test_2')
+        print(f"saved {saved_path}")
+        loaded = load_model(saved_path, Container2d, Unet2d)
         print(loaded)
     finally:
         rmtree('/tmp/test')
