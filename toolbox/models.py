@@ -13,6 +13,10 @@ class Hyperparameters:
         self.out_channels = out_channels
         self.dropout_rate = dropout_rate
 
+    def __str__(self):
+        return "; ".join([f"{a}={v}" for a, v in self.__dict__.items()])
+
+
 class Container(nn.Module):
     def __init__(self, hp: Hyperparameters, model: ClassVar, conv: ClassVar, bn: ClassVar):
         super().__init__()
