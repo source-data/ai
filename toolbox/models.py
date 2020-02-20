@@ -182,7 +182,7 @@ class ConvBlock2d(ConvBlock):
 class CatStack2d(CatStack):
 
     def __init__(self, hp: HyperparametersCatStack):
-        super().__init__(hp, nn.Conv1d, nn.BatchNorm2d, ConvBlock2d)
+        super().__init__(hp, nn.Conv2d, nn.BatchNorm2d, ConvBlock2d)
 
 
 def self_test():
