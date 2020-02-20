@@ -110,12 +110,12 @@ class Unet(nn.Module):
 
 class Unet1d(Unet):
     def __init__(self, hp: HyperparametersUnet):
-        super().__init__(hp, nn.Conv1d, nn.ConvTranspose1d, nn.BatchNorm1d, F.adaptive_max_pool1d, F.max_unpool1d)
+        super().__init__(hp, nn.Conv1d, nn.ConvTranspose1d, nn.BatchNorm1d, F.max_pool1d, F.max_unpool1d)
 
 
 class Unet2d(Unet):
     def __init__(self, hp: HyperparametersUnet):
-        super().__init__(hp, nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d, F.adaptive_max_pool2d, F.max_unpool2d)
+        super().__init__(hp, nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d, F.max_pool2d, F.max_unpool2d)
 
 
 class HyperparametersCatStack(Hyperparameters):
