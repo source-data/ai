@@ -197,6 +197,7 @@ class TString:
 
     def __init__(self, x = StringList(), dtype:torch.dtype=torch.float):
         self.dtype = dtype
+        self.nbits = CONVERTER.nbits
         self._t = torch.zeros([], dtype=self.dtype) # empty tensor
         self._s = []
         self._L = 0 # length
@@ -204,12 +205,13 @@ class TString:
         if isinstance(x, str):
             x = StringList([x]) if x else StringList()
         if isinstance(x, torch.Tensor):
-            assert x.dim() == 3 and x.size(1) == CONVERTER.nbits
+            assert x.dim() == 3 and x.size(1) == self.nbits
             self._t = x
             self._L = self._t.size(2)
             self._N = self._t.size(0)
             for i in range(self.depth):
-                self._s.append(CONVERTER.decode(x[i:i+1, :, : ])) # i:
+                s = CONVERTER.decode(x[i:i+1, :, : ])
+                self._s.append(s)
         elif isinstance(x, StringList):
             if x:
                 self._s = x.words
@@ -222,6 +224,10 @@ class TString:
             raise TStringTypeError(x)
 
 
+
+    def __str__(self):
+        return "\n".join(self._s)
+    
     def toStringList(self) -> StringList:
         return StringList(self._s) # slight overhead due to checks of homogenous length
 
@@ -300,6 +306,7 @@ def self_test(input_string: str):
     a = TString("a")
     b = TString("b")
     assert (a + b).toStringList().words == StringList(["ab"]).words
+    print(TString(StringList(['12345', '67890', 'abcde'])))
     print("It seems it works!")
 
 def main():
