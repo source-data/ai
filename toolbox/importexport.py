@@ -35,9 +35,7 @@ def export_model(model, path, filename):
         print(e)
     return archive_path
 
-
-def load_model(model_path, container: ClassVar, sub_module: ClassVar):
-    print(f"\n\nloading {model_path}\n\n")
+def unzip_model(model_path):
     with ZipFile(model_path) as myzip:
         myzip.extractall()
         for filename in myzip.namelist():
@@ -48,9 +46,26 @@ def load_model(model_path, container: ClassVar, sub_module: ClassVar):
                 hp_path = filename
     with open(hp_path, 'rb') as hyperparams:
         hp = pickle.load(hyperparams)
+    return hp, model_path
+
+def load_container(path, container: ClassVar, sub_module: ClassVar):
+    print(f"\n\nloading {path}\n\n")
+    hp, model_path = unzip(path)
     print(f"trying to build model ({container.__name__} with {sub_module.__name__}) with hyperparameters:")
     print(hp)
     model =  container(hp, sub_module)
+    state_dict = torch.load(model_path)
+    model.load_state_dict(state_dict)
+    os.remove(model_path)
+    os.remove(hp_path)
+    return model
+
+def load_autoencoder(path):
+    print(f"\n\nloading {path}\n\n")
+    hp, model_path = unzip(path)
+    print(f"trying to build model with hyperparameters:")
+    print(hp)
+    model =  Autoencoder(hp)
     state_dict = torch.load(model_path)
     model.load_state_dict(state_dict)
     os.remove(model_path)
