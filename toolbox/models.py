@@ -163,10 +163,10 @@ class CatStack(nn.Module):
         return y
 
 
-class Autoencoder(nn.Module):
+class Autoencoder1d(nn.Module):
 
     def __init__(self, hp: HyperparametersCatStack):
-        super(Autoencoder, self).__init__()
+        super(Autoencoder1d, self).__init__()
         self.in_channels = hp.in_channels
         self.hp = hp
         self.embed = Container1d(hp=self.hp, model=CatStack1d)

@@ -4,7 +4,7 @@
 import os
 import pickle
 import torch
-from .models import HyperparametersCatStack, Container1d, CatStack1d, HyperparametersUnet, Container2d, Unet2d
+from .models import HyperparametersCatStack, Container1d, CatStack1d, HyperparametersUnet, Container2d, Unet2d, Autoencoder1d
 from copy import deepcopy, copy
 from datetime import datetime
 from zipfile import ZipFile
@@ -44,13 +44,13 @@ def unzip_model(model_path):
                 model_path = filename
             elif ext == '.pickle':
                 hp_path = filename
-    with open(hp_path, 'rb') as hyperparams:
-        hp = pickle.load(hyperparams)
-    return hp, model_path
+    return hp_path, model_path
 
 def load_container(path, container: ClassVar, sub_module: ClassVar):
     print(f"\n\nloading {path}\n\n")
-    hp, model_path = unzip_model(path)
+    hp_path, model_path = unzip_model(path)
+    with open(hp_path, 'rb') as hyperparams:
+        hp = pickle.load(hyperparams)
     print(f"trying to build model ({container.__name__} with {sub_module.__name__}) with hyperparameters:")
     print(hp)
     model =  container(hp, sub_module)
@@ -62,10 +62,12 @@ def load_container(path, container: ClassVar, sub_module: ClassVar):
 
 def load_autoencoder(path):
     print(f"\n\nloading {path}\n\n")
-    hp, model_path = unzip_model(path)
+    hp_path, model_path = unzip_model(path)
+    with open(hp_path, 'rb') as hyperparams:
+        hp = pickle.load(hyperparams)
     print(f"trying to build model with hyperparameters:")
     print(hp)
-    model =  Autoencoder(hp)
+    model =  Autoencoder1d(hp)
     state_dict = torch.load(model_path)
     model.load_state_dict(state_dict)
     os.remove(model_path)
@@ -82,7 +84,7 @@ def self_test():
         y = c1dcs(x)
         saved_path = export_model(c1dcs, '/tmp/test', 'test_1')
         print(f"saved {saved_path}")
-        loaded = load_model(saved_path, Container1d, CatStack1d)
+        loaded = load_container(saved_path, Container1d, CatStack1d)
         print(loaded)
 
         hpun = HyperparametersUnet(nf_table=[2,2,2], kernel_table=[3,3], stride_table=[1,1,1], pool=True, in_channels=1, hidden_channels=2, out_channels=1, dropout_rate=0.1)
@@ -90,7 +92,7 @@ def self_test():
         y = c1dcs(x)
         saved_path = export_model(c2dun, '/tmp/test', 'test_2')
         print(f"saved {saved_path}")
-        loaded = load_model(saved_path, Container2d, Unet2d)
+        loaded = load_container(saved_path, Container2d, Unet2d)
         print(loaded)
     finally:
         rmtree('/tmp/test')
