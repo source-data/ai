@@ -50,7 +50,7 @@ def unzip_model(model_path):
 
 def load_container(path, container: ClassVar, sub_module: ClassVar):
     print(f"\n\nloading {path}\n\n")
-    hp, model_path = unzip(path)
+    hp, model_path = unzip_model(path)
     print(f"trying to build model ({container.__name__} with {sub_module.__name__}) with hyperparameters:")
     print(hp)
     model =  container(hp, sub_module)
@@ -62,7 +62,7 @@ def load_container(path, container: ClassVar, sub_module: ClassVar):
 
 def load_autoencoder(path):
     print(f"\n\nloading {path}\n\n")
-    hp, model_path = unzip(path)
+    hp, model_path = unzip_model(path)
     print(f"trying to build model with hyperparameters:")
     print(hp)
     model =  Autoencoder(hp)
