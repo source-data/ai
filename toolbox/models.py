@@ -163,6 +163,21 @@ class CatStack(nn.Module):
         return y
 
 
+class Autoencoder(nn.Module):
+
+    def __init__(self, hp: HyperparametersCatStack):
+        super(Autoencoder, self).__init__()
+        self.in_channels = hp.in_channels
+        self.hp = hp
+        self.embed = Container1d(hp=self.hp, model=CatStack1d)
+        self.reduce = nn.Conv1d(self.embed.out_channels, self.in_channels, 1, 1)
+        
+    def forward(self, x):
+        y = self.embed(x)
+        y = self.reduce(F.relu(y))
+        return y
+
+
 class ConvBlock1d(ConvBlock):
     def __init__(self, hp: HyperparametersCatStack):
         super().__init__(hp, nn.Conv1d,  nn.BatchNorm1d)
