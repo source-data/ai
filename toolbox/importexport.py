@@ -46,6 +46,20 @@ def unzip_model(model_path):
                 hp_path = filename
     return hp_path, model_path
 
+def load_model_from_class(path, model_class: ClassVar):
+    print(f"\n\nloading {path}\n\n")
+    hp_path, model_path = unzip_model(path)
+    with open(hp_path, 'rb') as hyperparams:
+        hp = pickle.load(hyperparams)
+    print(f"trying to build model ({model_class.__name__} with hyperparameters:")
+    print(hp)
+    model =  model_class(hp)
+    state_dict = torch.load(model_path)
+    model.load_state_dict(state_dict)
+    os.remove(model_path)
+    os.remove(hp_path)
+    return model
+
 def load_container(path, container: ClassVar, sub_module: ClassVar):
     print(f"\n\nloading {path}\n\n")
     hp_path, model_path = unzip_model(path)
@@ -61,17 +75,7 @@ def load_container(path, container: ClassVar, sub_module: ClassVar):
     return model
 
 def load_autoencoder(path):
-    print(f"\n\nloading {path}\n\n")
-    hp_path, model_path = unzip_model(path)
-    with open(hp_path, 'rb') as hyperparams:
-        hp = pickle.load(hyperparams)
-    print(f"trying to build model with hyperparameters:")
-    print(hp)
-    model =  Autoencoder1d(hp)
-    state_dict = torch.load(model_path)
-    model.load_state_dict(state_dict)
-    os.remove(model_path)
-    os.remove(hp_path)
+    model = load_model_from_class(path, model_class = Autoencoder1d)
     return model
 
 def self_test():
@@ -94,6 +98,16 @@ def self_test():
         print(f"saved {saved_path}")
         loaded = load_container(saved_path, Container2d, Unet2d)
         print(loaded)
+
+
+        hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=3, stride=1, in_channels=1, out_channels=1, hidden_channels=2, dropout_rate=0.1)
+        a1dcs = Autoencoder1d(hpcs)
+        y = a1dcs(x)
+        saved_path = export_model(a1dcs, '/tmp/test', 'test_3')
+        print(f"saved {saved_path}")
+        loaded = load_autoencoder(saved_path)
+        print(loaded)
+
     finally:
         rmtree('/tmp/test')
         print("Cleaned up.")
