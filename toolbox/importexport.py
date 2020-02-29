@@ -51,7 +51,7 @@ def load_model_from_class(path, model_class: ClassVar):
     hp_path, model_path = unzip_model(path)
     with open(hp_path, 'rb') as hyperparams:
         hp = pickle.load(hyperparams)
-    print(f"trying to build model ({model_class.__name__} with hyperparameters:")
+    print(f"trying to build model {model_class.__name__} with hyperparameters:")
     print(hp)
     model =  model_class(hp)
     state_dict = torch.load(model_path)
