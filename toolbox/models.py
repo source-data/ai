@@ -8,7 +8,7 @@ from copy import deepcopy
 
 class Hyperparameters:
     """
-    The base class to hold model and training hyperparameters.
+    The base class to hold model hyperparameters.
 
     Params and Attributes:
         in_channels (int): the number of input channels (or features).
@@ -16,6 +16,7 @@ class Hyperparameters:
         out_channels (int): the number of output channesl (or features)
         dropout_rate (float): dropout rate during training
     """
+
     def __init__(self, in_channels: int=None, hidden_channels: int=None, out_channels: int=None, dropout_rate: float=None):
         self.in_channels = in_channels
         self.hidden_channels = hidden_channels
@@ -60,16 +61,55 @@ class Container(nn.Module):
 
 
 class Container1d(Container):
+    """
+    1D Container model. 
+
+    Params:
+        hp (Hyperparameters): the hyperparameters of the model.
+        model (ClassVar): the class of the internal model of the Container.
+    """
+
     def __init__(self, hp: Hyperparameters, model: ClassVar):
         super().__init__(hp, model, nn.Conv1d,  nn.BatchNorm1d)
 
 
 class Container2d(Container):
+    """
+    2D Container model. 
+
+    Params:
+        hp (Hyperparameters): the hyperparameters of the model.
+        model (ClassVar): the class of the internal model of the Container.
+    """
+
     def __init__(self, hp: Hyperparameters, model: ClassVar):
         super().__init__(hp, model, nn.Conv2d,  nn.BatchNorm2d)
 
 
 class HyperparametersUnet(Hyperparameters):
+    """
+    Hyperparameters for U-net models. Extends the base class Hyperparameters.
+    The number of layers (depth) of the U-net is simply specified by giving appropriate list of channels, kernels and stride.
+    
+    Usage: a 3 layers U-net is specified with the following hyperparameters
+        HyperparametersUnet(
+            nf_table=[2,4,8, 16], # 1st layer: 2 -> 4 channels, 2nd layer: 4 -> 8 channels; 3rd layer: 8 -> 16 channels.
+            kernel_table=[3,3,3], # the three layers use same kernel 3
+            stride_table=[1,1,1], # the three layers use the same stride 1
+            pool=True, # pooling switched on
+            in_channels=2, # params from base class
+            hidden_channels=2, # params from base class
+            out_channels=3, # params from base class
+            dropout_rate=0.1 # params from base class
+        )
+
+    Params and Attributes:
+        nf_table (List[int]): the number of channels (features) of each layers in the form [in_channels, out/in_channels, in/out_channels, in/out_channels, ...]
+        kernel_table (List[int]): a list of the kernels for each layer.
+        stride_table (List[int]): a list of the strides for each layer.
+        pool (bool): indicate whether to include a pool/unpool step between layers.
+    """
+
     def __init__(self, nf_table: List[int], kernel_table: List[int], stride_table: List[int], pool:bool, **kwargs):
         super().__init__(**kwargs)
         self.hidden_channels = nf_table[0]
@@ -169,6 +209,28 @@ class Unet2d(Unet):
 
 
 class HyperparametersCatStack(Hyperparameters):
+    """
+    Hyperparameters for CatStack models. Extends the base class Hyperparameters.
+    
+    Usage: a 3 layers U-net is specified with the following hyperparameters
+        HyperparametersUnet(
+            N_layers=2, 
+            kernel=7, 
+            padding=3, 
+            stride=1
+            in_channels=2, # params from base class
+            hidden_channels=2, # params from base class
+            out_channels=3, # params from base class
+            dropout_rate=0.1 # params from base class
+        )
+
+    Params and Attributes:
+        N_layers (int): the number of layers.
+        kernel (int): kernel of the convoclution step.
+        padding (int): padding added to each convolution.
+        stride (int): stride of the convolution.
+    """
+
     def __init__(self, N_layers, kernel, padding, stride, **kwargs):
         super().__init__(**kwargs)
         self.N_layers = N_layers
@@ -187,6 +249,7 @@ class ConvBlock(nn.Module):
         conv (ClassVar): the class of the convolution (nn.Conv1d or nn.Conv2d) used for the adapter and compression layers.
         bn (ClassVar): the class of the BatchNorm layer (nn.BatchNorm1d or nn.BatchNorm2d)
     """
+
     def __init__(self, hp: Hyperparameters, conv:ClassVar, bn: ClassVar):
         self.hp = hp
         super().__init__()
@@ -256,22 +319,49 @@ class Autoencoder1d(nn.Module):
 
 
 class ConvBlock1d(ConvBlock):
+    """
+    A 1D convolution block.
+
+    Params:
+        hp (HyperparametersUnet): the U-net hyperparameters.
+    """
+
     def __init__(self, hp: HyperparametersCatStack):
         super().__init__(hp, nn.Conv1d,  nn.BatchNorm1d)
 
 
 class CatStack1d(CatStack):
+    """
+    A 1D stracked convolution CatStack model.
+
+    Params:
+        hp (HyperparametersUnet): hyperparameters.
+    """
 
     def __init__(self, hp: HyperparametersCatStack):
         super().__init__(hp, nn.Conv1d,  nn.BatchNorm1d, ConvBlock1d)
 
 
 class ConvBlock2d(ConvBlock):
+    """
+    A 2D convolution block.
+
+    Params:
+        hp (HyperparametersUnet): hyperparameters.
+    """
+
     def __init__(self, hp: HyperparametersCatStack):
         super().__init__(hp, nn.Conv2d,  nn.BatchNorm2d)
 
 
 class CatStack2d(CatStack):
+    """
+    A 2D stracked convolution CatStack model.
+
+    Params:
+        hp (HyperparametersUnet): hyperparameters.
+    """
+
     def __init__(self, hp: HyperparametersCatStack):
         super().__init__(hp, nn.Conv2d, nn.BatchNorm2d, ConvBlock2d)
 
