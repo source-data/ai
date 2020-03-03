@@ -75,9 +75,11 @@ class ConverterNBITS(Converter):
     def encode(self, input_string: str, dtype:torch.dtype=torch.float) -> torch.Tensor:
         """
         Encodes an input string into a 3D tensor.
-        Args
+
+        Args:
             input_string (str): string to convert
-        Returns
+
+        Returns:
             (torch.Tensor): 3D tensor 1 x NBITS x L, (1 example x NBITS bits x L characters) representing characters as NBITS features
         """
 
@@ -96,9 +98,11 @@ class ConverterNBITS(Converter):
     def decode(self, t: torch.Tensor) -> str:
         """
         Decodes a 3D tensor into a unicode string.
+
         Args:
             t (torch.Tensor): 3D tensor 1xNBITSxL (1 example x NBITS bits x L characters) representing characters as NBITS features
-        Returns
+        
+        Returns:
             (str): resulting string
         """
 
@@ -130,11 +134,19 @@ class ConverterNBITS(Converter):
 CONVERTER = ConverterNBITS(NBITS)
 
 class StringList:
-    _N = 0
-    _L = 0
-    _list = []
+    """
+    A class to represent a list of strings that MUST all be of identical length.
+    The identical length lends itself for straight forward conversion to a tensor once encoded.
+
+    Raises:
+        HeterogenousWordLengthError: when the strings are of heterogenous lengths or all empty.
+    """
+
 
     def __init__(self, x: List[str]=[]):
+        self._N = 0
+        self._L = 0
+        self._list = []
         if x:
             self._N = len(x)
             x_0 = len(x[0])
@@ -145,32 +157,32 @@ class StringList:
             self._list = x
 
     @property
-    def words(self):
+    def words(self) -> List:
         return self._list
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self._L
 
     @property
-    def depth(self):
+    def depth(self) -> int:
         return self._N
 
-    def __add__(self, x: 'StringList'):
+    def __add__(self, x: 'StringList') -> 'StringList':
         result = StringList([a + b for a, b in zip(self.words, x.words)])
         return result
 
-    def __getitem__(self, i: int):
+    def __getitem__(self, i: int) -> str:
         result = self.words[i]
         return result
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         result = " | ".join(self.words)
         return result
 
-    def __nonzero__(self):
+    def __nonzero__(self) -> bool:
         return len(self) > 0
 
-    def clone(self):
+    def clone(self) -> 'StringList':
         cloned = StringList(copy(self.words))
         return cloned
 

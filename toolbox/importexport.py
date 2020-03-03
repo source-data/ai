@@ -9,7 +9,7 @@ from .models import Hyperparameters, HyperparametersCatStack, Container, Contain
 from copy import deepcopy, copy
 from datetime import datetime
 from zipfile import ZipFile
-from typing import ClassVar
+from typing import ClassVar, Tuple
 from shutil import rmtree
 
 
