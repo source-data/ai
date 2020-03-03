@@ -7,6 +7,15 @@ from copy import deepcopy
 
 
 class Hyperparameters:
+    """
+    The base class to hold model and training hyperparameters.
+
+    Params and Attributes:
+        in_channels (int): the number of input channels (or features).
+        hidden_channels (int): the number of channels of the hidden layers.
+        out_channels (int): the number of output channesl (or features)
+        dropout_rate (float): dropout rate during training
+    """
     def __init__(self, in_channels: int=None, hidden_channels: int=None, out_channels: int=None, dropout_rate: float=None):
         self.in_channels = in_channels
         self.hidden_channels = hidden_channels
@@ -18,6 +27,19 @@ class Hyperparameters:
 
 
 class Container(nn.Module):
+    """
+    Base class for 1D or 2D Container models. This class is not meant to be instantiated, only its subclasses.
+    It includes an adapter layer that adapts the input channels the desired number of hidden channels.
+    It includes a compression layer that adapts the hidden channels to the desired number of output channels. 
+    Adapter and compression layers have a batch normalization of ReLU;
+
+    Params:
+        hp (Hyperparameters): the hyperparameters of the model.
+        model (ClassVar): the class of the internal model of the Container (Unet or CatStack, 1d or 2d versions).
+        conv (ClassVar): the class of the convolution (nn.Conv1d or nn.Conv2d) used for the adapter and compression layers.
+        bn (ClassVar): the class of the BatchNorm layer (nn.BatchNorm1d or nn.BatchNorm2d)
+    """
+
     def __init__(self, hp: Hyperparameters, model: ClassVar, conv: ClassVar, bn: ClassVar):
         super().__init__()
         self.hp = hp
@@ -58,6 +80,20 @@ class HyperparametersUnet(Hyperparameters):
 
 
 class Unet(nn.Module):
+    """
+    Base class of 1D or 2D U-net models. This class is not meant to be instantiated.
+    The U-net is built recursively. The kernel, padding and number of features of each layer is provided as lists in the HyperparamterUnet object.
+
+    Params:
+        hp (HyperparameterUnet): the model hyperparameters.
+        model (ClassVar): the class of the internal model of the Container (Unet or CatStack, 1d or 2d versions).
+        conv (ClassVar): the class of the convolution (nn.Conv1d or nn.Conv2d) used for the descending branch of the U-net.
+        convT (ClassVar): the class of the transpose convolution (nn.ConvTranspose1d or nn.ConvTranspose2d) used for the ascending branch of the U-net.
+        bn (ClassVar): the class of the BatchNorm layer (nn.BatchNorm1d or nn.BatchNorm2d).
+        pool (ClassVar): the class of the pooling layer (nn.Pool1d or nn.Pool2d).
+        unpool (ClassVar): the class of the unpooling layer (nn.Pool1d or nn.Pool2d).
+    """
+
     def __init__(self, hp: HyperparametersUnet, conv: ClassVar, convT: ClassVar, bn: ClassVar, pool: Callable, unpool: Callable):
         super().__init__()
         self.hp = deepcopy(hp) # pop() will modify lists in place
@@ -97,7 +133,7 @@ class Unet(nn.Module):
                 y, indices = self.pool(y, 2, stride=2, return_indices=True)
             y = self.unet(y)
             if self.hp.pool:
-                y = self.unpool(y, indices, 2, stride=2, output_size=y_size)
+                y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
 
         y = self.dropout(y)
         y = self.conv_up(y)
@@ -109,11 +145,25 @@ class Unet(nn.Module):
 
 
 class Unet1d(Unet):
+    """
+    1D U-net. 
+
+    Params:
+        hp (HyperparametersUnet): the U-net hyperparameters.
+    """
+
     def __init__(self, hp: HyperparametersUnet):
         super().__init__(hp, nn.Conv1d, nn.ConvTranspose1d, nn.BatchNorm1d, F.max_pool1d, F.max_unpool1d)
 
 
 class Unet2d(Unet):
+    """
+    2D U-net. 
+
+    Params:
+        hp (HyperparametersUnet): the U-net hyperparameters.
+    """
+
     def __init__(self, hp: HyperparametersUnet):
         super().__init__(hp, nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d, F.max_pool2d, F.max_unpool2d)
 
@@ -128,6 +178,15 @@ class HyperparametersCatStack(Hyperparameters):
 
 
 class ConvBlock(nn.Module):
+    """
+    Base class of a convolution block including a batchnomr of ReLU.
+    This class is not meant to be instantiated.
+    
+    Params:
+        hp (Hyperparameters):
+        conv (ClassVar): the class of the convolution (nn.Conv1d or nn.Conv2d) used for the adapter and compression layers.
+        bn (ClassVar): the class of the BatchNorm layer (nn.BatchNorm1d or nn.BatchNorm2d)
+    """
     def __init__(self, hp: Hyperparameters, conv:ClassVar, bn: ClassVar):
         self.hp = hp
         super().__init__()
@@ -143,6 +202,16 @@ class ConvBlock(nn.Module):
 
 
 class CatStack(nn.Module):
+    """
+    Base class for a CatStack model made of a concatenated stack of convolution blocks. This class is not meant to be instantiated.
+
+    Params:
+        hp (HyperparametersCatStack):
+        conv (ClassVar): the class of the convolution (nn.Conv1d or nn.Conv2d) used for the adapter and compression layers.
+        bn (ClassVar): the class of the BatchNorm layer (nn.BatchNorm1d or nn.BatchNorm2d)
+        conv_block (ClassVar): the class of convolution block to build the stack. 
+    """
+
     def __init__(self, hp: HyperparametersCatStack, conv: ClassVar, bn: ClassVar, conv_block: ClassVar):
         super().__init__()
         self.hp = hp
@@ -164,6 +233,14 @@ class CatStack(nn.Module):
 
 
 class Autoencoder1d(nn.Module):
+    """
+    An 1D autoencoder based on a Container1d with CatStack1d. 
+    The Container1d layer is followed by a reduction layer that addpats the number of output channels 
+    to be equal to the number of input channels.
+
+    Params:
+        hp (HyperParametersCatStack): hyperparameters of the internal CatStack1d model.
+    """
 
     def __init__(self, hp: HyperparametersCatStack):
         super(Autoencoder1d, self).__init__()
@@ -195,25 +272,36 @@ class ConvBlock2d(ConvBlock):
 
 
 class CatStack2d(CatStack):
-
     def __init__(self, hp: HyperparametersCatStack):
         super().__init__(hp, nn.Conv2d, nn.BatchNorm2d, ConvBlock2d)
 
 
 def self_test():
-    hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=3, stride=1, in_channels=1, out_channels=1, hidden_channels=2, dropout_rate=0.1)
+    hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=3, stride=1, in_channels=2, out_channels=3, hidden_channels=2, dropout_rate=0.1)
     cs2d = CatStack2d(hpcs)
     cb2d = ConvBlock2d(hpcs)
     cs1d = CatStack1d(hpcs)
-    cs2d = ConvBlock1d(hpcs)
-    hpun = HyperparametersUnet(nf_table=[2,2,2], kernel_table=[3,3], stride_table=[1,1,1], pool=True, in_channels=1, hidden_channels=2, out_channels=1, dropout_rate=0.1)
+    cb1d = ConvBlock1d(hpcs)
+    hpun = HyperparametersUnet(nf_table=[2,2,2], kernel_table=[3,3], stride_table=[1,1,1], pool=True, in_channels=2, hidden_channels=2, out_channels=3, dropout_rate=0.1)
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
     c1dun = Container1d(hpun, Unet1d)
     c2dun = Container2d(hpun, Unet2d)
 
-    print("It seems to work: classes could be instantiated")
+    x1d = torch.ones(2,hpcs.in_channels,100)
+    x2d = torch.ones(2,hpcs.in_channels,256,256)
+    cs1d(x1d)
+    cs2d(x2d)
+    cb1d(x1d)
+    cb2d(x2d)
+    c1dcs(x1d)
+    c2dcs(x2d)
+    c1dun(x1d)
+    c2dun(x2d)
+
+
+    print("It seems to work: all classes could be instantiated and input forwarded.")
 
 def main():
     self_test()

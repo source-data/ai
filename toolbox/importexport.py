@@ -4,7 +4,8 @@
 import os
 import pickle
 import torch
-from .models import HyperparametersCatStack, Container1d, CatStack1d, HyperparametersUnet, Container2d, Unet2d, Autoencoder1d
+from torch import nn
+from .models import Hyperparameters, HyperparametersCatStack, Container, Container1d, CatStack1d, HyperparametersUnet, Container2d, Unet2d, Autoencoder1d
 from copy import deepcopy, copy
 from datetime import datetime
 from zipfile import ZipFile
@@ -12,7 +13,21 @@ from typing import ClassVar
 from shutil import rmtree
 
 
-def export_model(model, path, filename):
+def export_model(model: nn.Module, path: str, filename: str) -> str:
+    """
+    A function to save a model and its hyperparameters to disk in a single archive.
+    All the files are prefixed with the datetime.
+    The model state is saved to a <prefix>_<filename>_model.th and the Hyperparameter object is pickeled to <prefix>_<filename>_hp.pickle
+    Both files a zipped together into <prefix>_<filename>.zip
+
+    Params:
+        model (nn.Module): the trained model
+        path (str): the destination path
+        filename (str): the basedname for the archive
+
+    Returns:
+        the full path to the archive
+    """
     archive_path = None
     try:
         if torch.cuda.is_available():
@@ -35,7 +50,17 @@ def export_model(model, path, filename):
         print(e)
     return archive_path
 
-def unzip_model(model_path):
+def unzip_model(model_path: str) -> Tuple[str, str]:
+    """
+    A small utility to unzip a saved model archive.
+
+    Params:
+        model_path (str): path to the archive
+
+    Returns:
+        hp_path, model_path (str, str): the path to the pickeld Hyperparameter object and the save model state.
+    """
+
     with ZipFile(model_path) as myzip:
         myzip.extractall()
         for filename in myzip.namelist():
@@ -46,7 +71,18 @@ def unzip_model(model_path):
                 hp_path = filename
     return hp_path, model_path
 
-def load_model_from_class(path, model_class: ClassVar):
+
+def load_model_from_class(path:str, model_class: ClassVar) -> nn.Module:
+    """
+    Generic function to load a model of type model_class.
+
+    Params:
+        path (str): the path to the model zip archive
+
+    Returns:
+        model (nn.Model): the trained model of type model_class
+    """
+
     print(f"\n\nloading {path}\n\n")
     hp_path, model_path = unzip_model(path)
     with open(hp_path, 'rb') as hyperparams:
@@ -60,7 +96,20 @@ def load_model_from_class(path, model_class: ClassVar):
     os.remove(hp_path)
     return model
 
-def load_container(path, container: ClassVar, sub_module: ClassVar):
+
+def load_container(path: str, container: ClassVar, sub_module: ClassVar) -> Container:
+    """
+    A function to load a Container model.
+
+    Params:
+        path (str): path to the model zip archive.
+        container (ClassVar): the subclass of Container (Container1d or Container2d)
+        sub_module (ClassVar): the submodule class (CatStack or Unet, 1d or 2d version) to be plugged into the Container.
+
+    Returns:
+        the traind model (Container)
+    """
+
     print(f"\n\nloading {path}\n\n")
     hp_path, model_path = unzip_model(path)
     with open(hp_path, 'rb') as hyperparams:
@@ -75,6 +124,15 @@ def load_container(path, container: ClassVar, sub_module: ClassVar):
     return model
 
 def load_autoencoder(path):
+    """
+    A function to load an Autoencoder1d model.
+
+    Params:
+        path (str): path to the model zip archive.
+
+    Returns:
+        the traind model (Autoencode1d)
+    """
     model = load_model_from_class(path, model_class = Autoencoder1d)
     return model
 
