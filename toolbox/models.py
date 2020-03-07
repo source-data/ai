@@ -53,10 +53,10 @@ class Container(nn.Module):
 
     def forward(self, x):
         x = self.adaptor(x)
-        x = self.BN_adapt(F.relu(x, inplace=True))
+        x = self.BN_adapt(F.elu(x, inplace=True))
         z = self.model(x)
         z = self.compress(z)
-        z = self.BN_out(F.relu(z, inplace=True)) # need to try without to see if it messes up average gray level
+        z = self.BN_out(F.elu(z, inplace=True)) # need to try without to see if it messes up average gray level
         return z
 
 
@@ -165,7 +165,7 @@ class Unet(nn.Module):
 
         y = self.dropout(x)
         y = self.conv_down(y)
-        y = self.BN_down(F.relu(y, inplace=True))
+        y = self.BN_down(F.elu(y, inplace=True))
 
         if self.unet is not None:
             if self.hp.pool:
@@ -177,10 +177,10 @@ class Unet(nn.Module):
 
         y = self.dropout(y)
         y = self.conv_up(y)
-        y = self.BN_up(F.relu(y, inplace=True))
+        y = self.BN_up(F.elu(y, inplace=True))
         y = torch.cat((x, y), 1)
         y = self.reduce(y)
-        y = self.BN_out(F.relu(y, inplace=True))
+        y = self.BN_out(F.elu(y, inplace=True))
         return y
 
 
@@ -260,7 +260,7 @@ class ConvBlock(nn.Module):
     def forward(self, x):
         x = self.dropout(x)
         x = self.conv(x)
-        x = self.BN(F.relu(x, inplace=True))
+        x = self.BN(F.elu(x, inplace=True))
         return x
 
 
@@ -291,7 +291,7 @@ class CatStack(nn.Module):
             x_list.append(x)
         x = torch.cat(x_list, 1)
         x = self.reduce(x)
-        y = self.BN(F.relu(x, inplace=True))
+        y = self.BN(F.elu(x, inplace=True))
         return y
 
 
@@ -314,7 +314,7 @@ class Autoencoder1d(nn.Module):
         
     def forward(self, x):
         y = self.embed(x)
-        y = self.reduce(F.relu(y))
+        y = self.reduce(F.elu(y))
         return y
 
 
