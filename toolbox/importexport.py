@@ -166,6 +166,7 @@ def self_test():
         loaded = load_autoencoder(saved_path)
         print(loaded)
 
+
     finally:
         rmtree('/tmp/test')
         print("Cleaned up.")
