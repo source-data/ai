@@ -12,6 +12,7 @@ from zipfile import ZipFile
 from typing import ClassVar, Tuple
 from shutil import rmtree
 
+TEMP = os.getenv('TEMP')
 
 def export_model(model: nn.Module, path: str, filename: str) -> str:
     """
@@ -52,23 +53,29 @@ def export_model(model: nn.Module, path: str, filename: str) -> str:
 
 def unzip_model(model_path: str) -> Tuple[str, str]:
     """
-    A small utility to unzip a saved model archive.
+    A small utility to unzip the hyperparameter and parameter files to a temporary directory.
+    The path to the temporary directory needs to be specified in the environment variable TEMP.
 
     Params:
         model_path (str): path to the archive
 
     Returns:
-        hp_path, model_path (str, str): the path to the pickeld Hyperparameter object and the save model state.
+        hp_path, model_path (str, str): the absolute path to the pickeled Hyperparameter object and the saved model state.
     """
 
     with ZipFile(model_path) as myzip:
-        myzip.extractall()
+        prevdir = os.getcwd()
+        try:
+            os.chdir(TEMP)
+            myzip.extractall()
+        finally:
+            os.chdir(prevdir)
         for filename in myzip.namelist():
             _, ext = os.path.splitext(filename)
             if ext == '.th':
-                model_path = filename
+                model_path = os.path.join(TEMP, filename)
             elif ext == '.pickle':
-                hp_path = filename
+                hp_path = filename = os.path.join(TEMP, filename)
     return hp_path, model_path
 
 
@@ -92,6 +99,7 @@ def load_model_from_class(path:str, model_class: ClassVar) -> nn.Module:
     model =  model_class(hp)
     state_dict = torch.load(model_path)
     model.load_state_dict(state_dict)
+    # clean up the files from the temporary folder using their absolut paths
     os.remove(model_path)
     os.remove(hp_path)
     return model
