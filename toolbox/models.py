@@ -86,7 +86,7 @@ class Container2d(Container):
     def __init__(self, hp: Hyperparameters, model: ClassVar):
         super().__init__(hp, model, nn.Conv2d,  nn.BatchNorm2d)
 
-class Container2dPD(Container):
+class Container2dPC(Container):
     """
     2D Container model. 
 
@@ -389,7 +389,7 @@ def self_test():
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
-    c2dcs_PD = Container2dPD(hpcs, CatStack2d)
+    c2dcs_PC = Container2dPC(hpcs, CatStack2d)
     c1dun = Container1d(hpun, Unet1d)
     c2dun = Container2d(hpun, Unet2d)
 
@@ -401,7 +401,7 @@ def self_test():
     cb2d(x2d)
     c1dcs(x1d)
     c2dcs(x2d)
-    c2dcs_PD(x2d)
+    c2dcs_PC(x2d)
     c1dun(x1d)
     c2dun(x2d)
 
