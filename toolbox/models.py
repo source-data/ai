@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from typing import List, Callable, ClassVar
 from collections import namedtuple
 from copy import deepcopy
+from .nvidia import PartialConv2d
 
 
 class Hyperparameters:
@@ -84,6 +85,19 @@ class Container2d(Container):
 
     def __init__(self, hp: Hyperparameters, model: ClassVar):
         super().__init__(hp, model, nn.Conv2d,  nn.BatchNorm2d)
+
+
+class Container2dPC(Container):
+    """
+    2D Container model. 
+
+    Params:
+        hp (Hyperparameters): the hyperparameters of the model.
+        model (ClassVar): the class of the internal model of the Container.
+    """
+
+    def __init__(self, hp: Hyperparameters, model: ClassVar):
+        super().__init__(hp, model, PartialConv2d,  nn.BatchNorm2d)
 
 
 class HyperparametersUnet(Hyperparameters):
@@ -376,6 +390,7 @@ def self_test():
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
+    c2dcs_PC = Container2dPC(hpcs, CatStack2d)
     c1dun = Container1d(hpun, Unet1d)
     c2dun = Container2d(hpun, Unet2d)
 
@@ -387,6 +402,7 @@ def self_test():
     cb2d(x2d)
     c1dcs(x1d)
     c2dcs(x2d)
+    c2dcs_PC(x2d)
     c1dun(x1d)
     c2dun(x2d)
 
