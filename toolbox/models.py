@@ -47,7 +47,7 @@ class PartiaLConv2d (nn.Conv2d):
 
 class PartialTransposeConv2d(nn.ConvTranspose2d):
     def __init__(self, *args, **kwargs):
-        super(nn.ConvTranspose2d, self).__init__(*args, **kwargs)
+        super(PartialTransposeConv2d, self).__init__(*args, **kwargs)
         self.ones = torch.ones_like(self.weight)
         self.n = self.ones.size(1) * self.ones.size(2) * self.ones.size(3)
         self.mask_conv = F.conv_transpose2d
