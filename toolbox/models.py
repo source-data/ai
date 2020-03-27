@@ -154,14 +154,14 @@ class Container2dPC(nn.Module):
         self.out_channels = self.hp.out_channels
         self.adaptor = nn.Conv2d(self.hp.in_channels, self.hp.hidden_channels, 1, 1)
         self.BN_adapt = nn.BatchNorm2d(self.hp.hidden_channels)
-        self.model = CatStack2dPC(self.hp)
+        self.model = Unet2dPC(self.hp) # CatStack2dPC(self.hp)
         self.compress = nn.Conv2d(self.hp.hidden_channels, self.hp.out_channels, 1, 1)
         self.BN_out = nn.BatchNorm2d(self.hp.out_channels)
 
     def forward(self, x, mask=None):
         x = self.adaptor(x)
         x = self.BN_adapt(F.elu(x, inplace=True))
-        z = self.model(x, mask)
+        z, _ = self.model(x, mask)
         z = self.compress(z)
         z = self.BN_out(F.elu(z, inplace=True)) # need to try without to see if it messes up average gray level
         return z
@@ -311,18 +311,16 @@ class Unet2dPC(nn.Module):
             if self.hp.pool:
                 y_size = y.size()
                 y, indices = self.pool(y, 2, stride=2, return_indices=True)
-                new_mask_size = new_mask.size()
-                new_mask, mask_indices = self.pool(new_mask, 2, stride=2, return_indices=True)
+                if new_mask is not None:
+                    new_mask_size = new_mask.size()
+                    new_mask, mask_indices = self.pool(new_mask, 2, stride=2, return_indices=True)
             y, _ = self.unet(y, new_mask)
             if self.hp.pool:
                 y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
-                new_mask = self.unpool(new_mask, mask_indices, 2, stride=2, output_size=list(new_mask_size))
+                if new_mask is not None:
+                    new_mask = self.unpool(new_mask, mask_indices, 2, stride=2, output_size=list(new_mask_size))
         y = self.dropout(y)
-        try:
-            y, _ = self.conv_up(y, new_mask)
-        except RuntimeError as e:
-            print(e)
-            import pdb; pdb.set_trace()
+        y = self.conv_up(y)
         y = self.BN_up(F.elu(y, inplace=True))
         y = torch.cat((x, y), 1)
         y = self.reduce(y)
@@ -571,12 +569,12 @@ def self_test():
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
-    c2dcs_PC = Container2dPC(hpcs)
+    c2dcs_PC = Container2dPC(hpun)
     c1dun = Container1d(hpun, Unet1d)
     c2dun = Container2d(hpun, Unet2d)
 
-    x1d = torch.ones(2,hpcs.in_channels,100)
-    x2d = torch.ones(2,hpcs.in_channels,256,256)
+    x1d = torch.ones(2, hpcs.in_channels, 100)
+    x2d = torch.ones(2, hpcs.in_channels, 256, 256)
     mask = torch.ones(2, 1, 256, 256)
     cs1d(x1d)
     cs2d(x2d)
