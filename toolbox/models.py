@@ -270,6 +270,8 @@ class PartiaLConv2d (nn.Conv2d):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ones = torch.ones(1, 1, self.kernel_size[0], self.kernel_size[1])
+        if torch.cuda.is_available():
+            self.ones = self.ones.cuda()
         self.mask_conv = F.conv2d
 
     def forward(self, input, mask=None):
