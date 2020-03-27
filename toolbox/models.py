@@ -9,7 +9,7 @@ from .nvidia import PartialConv2d as PC2D
 
 class PartiaLConv2d (nn.Conv2d):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(PartiaLConv2d, self).__init__(*args, **kwargs)
         self.ones = torch.ones_like(self.weight)
         self.n = self.ones.size(1) * self.ones.size(2) * self.ones.size(3)
         self.mask_conv = F.conv2d
@@ -29,7 +29,7 @@ class PartiaLConv2d (nn.Conv2d):
                 self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
                 self.ratio = self.n / (self.mask_for_output + 1e-8)
                 self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                ratio = ratio * mask_for_output
+                self.ratio = self.ratio * self.smask_for_output
 
             # output = super().forward(input) # assuming that input is already masked
             output = super().forward(input * self.mask) # assuming that input is not yet masked
@@ -47,7 +47,7 @@ class PartiaLConv2d (nn.Conv2d):
 
 class PartialTransposeConv2d(nn.ConvTranspose2d):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(nn.ConvTranspose2d, self).__init__(*args, **kwargs)
         self.ones = torch.ones_like(self.weight)
         self.n = self.ones.size(1) * self.ones.size(2) * self.ones.size(3)
         self.mask_conv = F.conv_transpose2d
@@ -67,7 +67,7 @@ class PartialTransposeConv2d(nn.ConvTranspose2d):
                 self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
                 self.ratio = self.n / (self.mask_for_output + 1e-8)
                 self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                ratio = ratio * mask_for_output
+                self.ratio = self.ratio * self.mask_for_output
 
             # output = super().forward(input) # assuming that input is already masked
             output = super().forward(input * self.mask) # assuming that input is not yet masked
