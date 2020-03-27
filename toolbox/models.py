@@ -269,14 +269,16 @@ class HyperparametersCatStack(Hyperparameters):
 class PartiaLConv2d (nn.Conv2d):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.ones = torch.ones(1, 1, self.kernel_size[0], self.kernel_size[1])
+        self.mask_conv = F.conv2d
 
     def forward(self, input, mask=None):
         if mask is not None:
             output = super().forward(input * mask)
             with torch.no_grad():
-                mask = super().forward(mask)
-                mask = mask.clamp(0,1).ceil()
-                # do we really need to scale by ratio of true pixels ie mask.nelement() / mask.sum()?
+                mask = self.mask_conv(mask, self.ones, padding=self.padding, stride=self.stride)
+                # do we really need to scale by ratio of true pixels?
+                # mask = mask.nelement() / mask.sum()
                 output = output * mask
         else:
             output = super().forward(input)
