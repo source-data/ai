@@ -18,7 +18,6 @@ class PartiaLConv2d (nn.Conv2d):
         assert input.dim() == 4
         if mask is not None:
             mask_for_input = mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-            output = super().forward(input * mask_for_input)
             with torch.no_grad():
                 W = self.ones.to(input) # to move to same cuda device as input when necessary
                 mask_for_output = self.mask_conv(mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
@@ -26,10 +25,11 @@ class PartiaLConv2d (nn.Conv2d):
                 mask_for_output = mask_for_output.clamp(0, 1) 
                 ratio = ratio * mask_for_output # remove the 10e8 and keep the ones
                 bias_view = self.bias.view(1, self.out_channels, 1, 1)
-                output = ((output - bias_view) * ratio) + bias_view
-                output = output * mask_for_output # is this necessary? ratio is zero anyway where mask is zero...
-                new_mask = mask_for_output.sum(1).clamp(0, 1)
-                new_mask = new_mask.unsqueeze(1)
+            output = super().forward(input * mask_for_input)
+            output = ((output - bias_view) * ratio) + bias_view
+            output = output * mask_for_output # is this necessary? ratio is zero anyway where mask is zero...
+            new_mask = mask_for_output.sum(1).clamp(0, 1)
+            new_mask = new_mask.unsqueeze(1)
         else:
             output = super().forward(input)
             new_mask = None
@@ -420,7 +420,7 @@ class ConvBlock2dPC(nn.Module):
         self.hp = hp
         super().__init__()
         self.dropout = nn.Dropout(self.hp.dropout_rate)
-        self.conv = PC2D(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.hp.stride, self.hp.padding, multi_channel=True, return_mask=True)
+        self.conv = PartiaLConv2d(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.hp.stride, self.hp.padding) #, multi_channel=True, return_mask=True)
         self.BN = nn.BatchNorm2d(self.hp.hidden_channels)
 
     def forward(self, x, mask=None):
@@ -579,7 +579,7 @@ def self_test():
 
     x1d = torch.ones(2, hpcs.in_channels, 100)
     x2d = torch.ones(2, hpcs.in_channels, 256, 256)
-    mask = torch.ones(2, 2, 256, 256)
+    mask = torch.ones(2, 1, 256, 256)
     cs1d(x1d)
     cs2d(x2d)
     cb1d(x1d)
