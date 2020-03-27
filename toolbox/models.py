@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from typing import List, Callable, ClassVar
 from collections import namedtuple
 from copy import deepcopy
-# from .nvidia import PartialConv2d
+from .nvidia import PartialConv2d as PC2D
 
 
 class PartiaLConv2d (nn.Conv2d):
@@ -420,7 +420,7 @@ class ConvBlock2dPC(nn.Module):
         self.hp = hp
         super().__init__()
         self.dropout = nn.Dropout(self.hp.dropout_rate)
-        self.conv = PartiaLConv2d(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.hp.stride, self.hp.padding)
+        self.conv = PC2D(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.hp.stride, self.hp.padding, multi_channel=True, return_mask=True)
         self.BN = nn.BatchNorm2d(self.hp.hidden_channels)
 
     def forward(self, x, mask=None):
@@ -579,7 +579,7 @@ def self_test():
 
     x1d = torch.ones(2, hpcs.in_channels, 100)
     x2d = torch.ones(2, hpcs.in_channels, 256, 256)
-    mask = torch.ones(2, 1, 256, 256)
+    mask = torch.ones(2, 2, 256, 256)
     cs1d(x1d)
     cs2d(x2d)
     cb1d(x1d)
