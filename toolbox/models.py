@@ -27,9 +27,9 @@ class PartiaLConv2d (nn.Conv2d):
             with torch.no_grad():
                 W = self.ones.to(input) # to move to same cuda device as input when necessary
                 self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
-                self.ratio = self.mask_for_output / self.n # INVERSE FROM NVIDIA!
+                self.ratio = self.n / (self.mask_for_output + 1e-8)
                 self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                # ratio = ratio * mask_for_output
+                ratio = ratio * mask_for_output
 
             # output = super().forward(input) # assuming that input is already masked
             output = super().forward(input * self.mask) # assuming that input is not yet masked
@@ -65,9 +65,9 @@ class PartialTransposeConv2d(nn.ConvTranspose2d):
             with torch.no_grad():
                 W = self.ones.to(input) # to move to same cuda device as input when necessary
                 self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
-                self.ratio = self.mask_for_output / self.n # INVERSE FROM NVIDIA!
+                self.ratio = self.n / (self.mask_for_output + 1e-8)
                 self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                # ratio = ratio * mask_for_output
+                ratio = ratio * mask_for_output
 
             # output = super().forward(input) # assuming that input is already masked
             output = super().forward(input * self.mask) # assuming that input is not yet masked
