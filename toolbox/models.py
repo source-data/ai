@@ -270,15 +270,14 @@ class PartiaLConv2d (nn.Conv2d):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ones = torch.ones(1, 1, self.kernel_size[0], self.kernel_size[1])
-        if torch.cuda.is_available():
-            self.ones = self.ones.cuda()
         self.mask_conv = F.conv2d
 
     def forward(self, input, mask=None):
         if mask is not None:
             output = super().forward(input * mask)
             with torch.no_grad():
-                mask = self.mask_conv(mask, self.ones, padding=self.padding, stride=self.stride)
+                weight = self.ones.to(input)
+                mask = self.mask_conv(mask, weight, padding=self.padding, stride=self.stride)
                 # do we really need to scale by ratio of true pixels?
                 # mask = mask.nelement() / mask.sum()
                 output = output * mask
