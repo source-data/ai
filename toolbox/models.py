@@ -6,6 +6,60 @@ from collections import namedtuple
 from copy import deepcopy
 
 
+
+class PartiaLConv2d (nn.Conv2d):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ones = torch.ones_like(self.weight)
+        self.mask_conv = F.conv2d
+
+    def forward(self, input, mask=None):
+        if mask is not None:
+            try:
+                mask_for_input = mask.repeat(1, input.size(1), 1, 1) # same number of features as input
+                output = super().forward(input * mask_for_input)
+            except:
+                import pdb; pdb.set_trace()
+            with torch.no_grad():
+                W = self.ones.to(input) # to move to same cuda device as input when necessary
+                mask_for_output = self.mask_conv(mask_for_input, W, padding=self.padding, stride=self.stride)
+                mask_for_output = mask_for_output.clamp(0, 1)
+                # do we really need to scale by ratio of true pixels?
+                # mask = mask.nelement() / mask.sum()
+                output = output * mask_for_output
+                new_mask = mask_for_output.sum(1).clamp(0, 1)
+                new_mask = new_mask.unsqueeze(1)
+        else:
+            output = super().forward(input)
+            new_mask = None
+        return output, new_mask
+
+
+class PartiaLTransposeConv2d(nn.ConvTranspose2d):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.ones = torch.ones_like(self.weight)
+        self.mask_conv = F.conv_transpose2d
+
+    def forward(self, input, mask=None):
+        if mask is not None:
+            mask_for_input = mask.repeat(1, input.size(1), 1, 1) # same number of features as input
+            output = super().forward(input * mask_for_input)
+            with torch.no_grad():
+                W = self.ones.to(input) # to move to same cuda device as input when necessary
+                mask_for_output = self.mask_conv(mask_for_input, W, padding=self.padding, stride=self.stride)
+                # do we really need to scale by ratio of true pixels?
+                # mask = mask.nelement() / mask.sum()
+                output = output * mask_for_output
+                new_mask = mask_for_output.sum(1).clamp(0, 1)
+                new_mask = new_mask.unsqueeze(1)
+        else:
+            output = super().forward(input)
+            new_mask = None
+        return output, new_mask
+
+
+
 class Hyperparameters:
     """
     The base class to hold model hyperparameters.
@@ -211,6 +265,70 @@ class Unet(nn.Module):
         return y
 
 
+class Unet2dPC(nn.Module):
+    """
+    Base class of 1D or 2D U-net models. This class is not meant to be instantiated.
+    The U-net is built recursively. The kernel, padding and number of features of each layer is provided as lists in the HyperparamterUnet object.
+
+    Params:
+        hp (HyperparameterUnet): the model hyperparameters.
+    """
+
+    def __init__(self, hp: HyperparametersUnet):
+        super().__init__()
+        self.hp = deepcopy(hp) # pop() will modify lists in place
+        self.nf_input = self.hp.nf_table[0]
+        self.nf_output = self.hp.nf_table[1]
+        self.hp.nf_table.pop(0)
+        self.kernel = self.hp.kernel_table.pop(0)
+        self.stride = self.hp.stride_table.pop(0)
+        self.dropout_rate = self.hp.dropout_rate
+
+        self.dropout = nn.Dropout(self.dropout_rate)
+        self.conv_down = PartiaLConv2d(self.nf_input, self.nf_output, self.kernel, self.stride)
+        self.BN_down = nn.BatchNorm2d(self.nf_output)
+        self.pool = F.max_pool2d
+        self.conv_up = nn.ConvTranspose2d(self.nf_output, self.nf_input, self.kernel, self.stride)
+        self.unpool = F.max_unpool2d
+        self.BN_up = nn.BatchNorm2d(self.nf_input)
+
+        if len(self.hp.nf_table) > 1:
+            self.unet = self.__class__(self.hp)
+        else:
+            self.unet = None
+
+        self.reduce = nn.Conv2d(2*self.nf_input, self.nf_input, 1, 1)
+        self.BN_out = nn.BatchNorm2d(self.nf_input)
+
+
+    def forward(self, x, mask=None):
+
+        y = self.dropout(x)
+        y, new_mask = self.conv_down(y, mask)
+        y = self.BN_down(F.elu(y, inplace=True))
+
+        if self.unet is not None:
+            if self.hp.pool:
+                y_size = y.size()
+                y, indices = self.pool(y, 2, stride=2, return_indices=True)
+                new_mask_size = new_mask.size()
+                new_mask, mask_indices = self.pool(new_mask, 2, stride=2, return_indices=True)
+            y, _ = self.unet(y, new_mask)
+            if self.hp.pool:
+                y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
+                new_mask = self.unpool(new_mask, mask_indices, 2, stride=2, output_size=list(new_mask_size))
+        y = self.dropout(y)
+        try:
+            y, _ = self.conv_up(y, new_mask)
+        except RuntimeError as e:
+            print(e)
+            import pdb; pdb.set_trace()
+        y = self.BN_up(F.elu(y, inplace=True))
+        y = torch.cat((x, y), 1)
+        y = self.reduce(y)
+        y = self.BN_out(F.elu(y, inplace=True))
+        return y, mask
+
 class Unet1d(Unet):
     """
     1D U-net. 
@@ -264,26 +382,6 @@ class HyperparametersCatStack(Hyperparameters):
         self.kernel = kernel
         self.padding = padding
         self.stride = stride
-
-
-class PartiaLConv2d (nn.Conv2d):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.ones = torch.ones(1, 1, self.kernel_size[0], self.kernel_size[1])
-        self.mask_conv = F.conv2d
-
-    def forward(self, input, mask=None):
-        if mask is not None:
-            output = super().forward(input * mask)
-            with torch.no_grad():
-                weight = self.ones.to(input)
-                mask = self.mask_conv(mask, weight, padding=self.padding, stride=self.stride)
-                # do we really need to scale by ratio of true pixels?
-                # mask = mask.nelement() / mask.sum()
-                output = output * mask
-        else:
-            output = super().forward(input)
-        return output, mask
 
 
 class ConvBlock(nn.Module):
@@ -479,7 +577,7 @@ def self_test():
 
     x1d = torch.ones(2,hpcs.in_channels,100)
     x2d = torch.ones(2,hpcs.in_channels,256,256)
-    mask = torch.ones_like(x2d)
+    mask = torch.ones(2, 1, 256, 256)
     cs1d(x1d)
     cs2d(x2d)
     cb1d(x1d)
