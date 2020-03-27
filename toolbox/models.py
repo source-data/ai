@@ -22,20 +22,20 @@ class PartiaLConv2d (nn.Conv2d):
     def forward(self, input, mask=None):
         assert input.dim() == 4
         self.mask = mask
+        input = input * self.mask
         if self.mask is not None:
             self.mask_for_input = self.mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-            with torch.no_grad():
-                W = self.ones.to(input) # to move to same cuda device as input when necessary
-                self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
-                self.ratio = self.n / (self.mask_for_output + 1e-8)
-                self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                self.ratio = self.ratio * self.mask_for_output
+            # with torch.no_grad(): # try removing this
+            W = self.ones.to(input) # to move to same cuda device as input when necessary
+            self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
+            self.ratio = self.n / (self.mask_for_output + 1e-8)
+            self.mask_for_output = self.mask_for_output.clamp(0, 1)
+            self.ratio = self.ratio * self.mask_for_output
 
-            output = super().forward(input) # assuming that input is already masked
-            # output = super().forward(input * self.mask) # assuming that input is not yet masked
+            output = super().forward(input)
             bias_view = self.bias.view(1, self.out_channels, 1, 1)
             # output = ((output - bias_view) * self.ratio) + bias_view
-            output = output * self.mask_for_output # is this necessary? ratio is zero anyway where mask is zero...
+            output = output * self.mask_for_output
             self.new_mask = self.mask_for_output.sum(1).clamp(0, 1)
             self.new_mask = self.new_mask.unsqueeze(1)
         else:
@@ -60,20 +60,20 @@ class PartialTransposeConv2d(nn.ConvTranspose2d):
     def forward(self, input, mask=None):
         assert input.dim() == 4
         self.mask = mask
+        input = input * self.mask
         if self.mask is not None:
             self.mask_for_input = self.mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-            with torch.no_grad():
-                W = self.ones.to(input) # to move to same cuda device as input when necessary
-                self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
-                self.ratio = self.n / (self.mask_for_output + 1e-8)
-                self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                self.ratio = self.ratio * self.mask_for_output
+            # with torch.no_grad():
+            W = self.ones.to(input) # to move to same cuda device as input when necessary
+            self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
+            self.ratio = self.n / (self.mask_for_output + 1e-8)
+            self.mask_for_output = self.mask_for_output.clamp(0, 1)
+            self.ratio = self.ratio * self.mask_for_output
 
-            output = super().forward(input) # assuming that input is already masked
-            # output = super().forward(input * self.mask) # assuming that input is not yet masked
+            output = super().forward(input)
             bias_view = self.bias.view(1, self.out_channels, 1, 1)
             # output = ((output - bias_view) * self.ratio) + bias_view
-            output = output * self.mask_for_output # is this necessary? ratio is zero anyway where mask is zero...
+            output = output * self.mask_for_output
             self.new_mask = self.mask_for_output.sum(1).clamp(0, 1)
             self.new_mask = self.new_mask.unsqueeze(1)
         else:
