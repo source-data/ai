@@ -4,29 +4,29 @@ import torch.nn.functional as F
 from typing import List, Callable, ClassVar
 from collections import namedtuple
 from copy import deepcopy
-
+from .nvidia import PartialConv2d
 
 
 class PartiaLConv2d (nn.Conv2d):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ones = torch.ones_like(self.weight)
+        self.n = self.ones.size(1) * self.ones.size(2) * self.ones.size(3)
         self.mask_conv = F.conv2d
 
     def forward(self, input, mask=None):
         if mask is not None:
-            try:
-                mask_for_input = mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-                output = super().forward(input * mask_for_input)
-            except:
-                import pdb; pdb.set_trace()
+            mask_for_input = mask.repeat(1, input.size(1), 1, 1) # same number of features as input
+            output = super().forward(input * mask_for_input)
             with torch.no_grad():
                 W = self.ones.to(input) # to move to same cuda device as input when necessary
-                mask_for_output = self.mask_conv(mask_for_input, W, padding=self.padding, stride=self.stride)
-                mask_for_output = mask_for_output.clamp(0, 1)
-                # do we really need to scale by ratio of true pixels?
-                # mask = mask.nelement() / mask.sum()
-                output = output * mask_for_output
+                mask_for_output = self.mask_conv(mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
+                ratio = self.n / (mask_for_output + 1e-8) # 1 where mask is 1, 10e8 where mask is zero
+                mask_for_output = mask_for_output.clamp(0, 1) 
+                ratio = ratio * mask_for_output # remove the 10e8 and keep the ones
+                bias_view = self.bias.view(1, self.out_channels, 1, 1)
+                output = ((output - bias_view) * ratio) + bias_view
+                output = output * mask_for_output # is this necessary? ratio is zero anyway where mask is zero...
                 new_mask = mask_for_output.sum(1).clamp(0, 1)
                 new_mask = new_mask.unsqueeze(1)
         else:
