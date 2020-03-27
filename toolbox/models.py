@@ -29,7 +29,7 @@ class PartiaLConv2d (nn.Conv2d):
                 self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
                 self.ratio = self.n / (self.mask_for_output + 1e-8)
                 self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                self.ratio = self.ratio * self.smask_for_output
+                self.ratio = self.ratio * self.mask_for_output
 
             # output = super().forward(input) # assuming that input is already masked
             output = super().forward(input * self.mask) # assuming that input is not yet masked
