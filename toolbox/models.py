@@ -25,7 +25,8 @@ class PartiaLConv2d (nn.Conv2d):
                 mask_for_output = mask_for_output.clamp(0, 1) 
                 ratio = ratio * mask_for_output # remove the 10e8 and keep the ones
                 bias_view = self.bias.view(1, self.out_channels, 1, 1)
-            output = super().forward(input * mask_for_input)
+            output = super().forward(input) # assuming that input is already masked
+            # output = super().forward(input * mask) # assuming that input is not yet masked
             output = ((output - bias_view) * ratio) + bias_view
             output = output * mask_for_output # is this necessary? ratio is zero anyway where mask is zero...
             new_mask = mask_for_output.sum(1).clamp(0, 1)
@@ -37,27 +38,34 @@ class PartiaLConv2d (nn.Conv2d):
         return output, new_mask
 
 
-class PartiaLTransposeConv2d(nn.ConvTranspose2d):
+class PartialTransposeConv2d(nn.ConvTranspose2d):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.ones = torch.ones_like(self.weight)
+        self.n = self.ones.size(1) * self.ones.size(2) * self.ones.size(3)
         self.mask_conv = F.conv_transpose2d
 
     def forward(self, input, mask=None):
+        assert input.dim() == 4
         if mask is not None:
             mask_for_input = mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-            output = super().forward(input * mask_for_input)
             with torch.no_grad():
                 W = self.ones.to(input) # to move to same cuda device as input when necessary
-                mask_for_output = self.mask_conv(mask_for_input, W, padding=self.padding, stride=self.stride)
-                # do we really need to scale by ratio of true pixels?
-                # mask = mask.nelement() / mask.sum()
-                output = output * mask_for_output
-                new_mask = mask_for_output.sum(1).clamp(0, 1)
-                new_mask = new_mask.unsqueeze(1)
+                mask_for_output = self.mask_conv(mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
+                ratio = self.n / (mask_for_output + 1e-8) # 1 where mask is 1, 10e8 where mask is zero
+                mask_for_output = mask_for_output.clamp(0, 1) 
+                ratio = ratio * mask_for_output # remove the 10e8 and keep the ones
+                bias_view = self.bias.view(1, self.out_channels, 1, 1)
+            output = super().forward(input) # assuming that input is already masked
+            # output = super().forward(input * mask) # assuming that input is not yet masked
+            output = ((output - bias_view) * ratio) + bias_view
+            output = output * mask_for_output # is this necessary? ratio is zero anyway where mask is zero...
+            new_mask = mask_for_output.sum(1).clamp(0, 1)
+            new_mask = new_mask.unsqueeze(1)
         else:
             output = super().forward(input)
             new_mask = None
+        assert output.dim() == 4
         return output, new_mask
 
 
@@ -156,14 +164,14 @@ class Container2dPC(nn.Module):
         self.out_channels = self.hp.out_channels
         self.adaptor = nn.Conv2d(self.hp.in_channels, self.hp.hidden_channels, 1, 1)
         self.BN_adapt = nn.BatchNorm2d(self.hp.hidden_channels)
-        self.model = CatStack2dPC(self.hp) # Unet2dPC(self.hp) # 
+        self.model = Unet2dPC(self.hp) # CatStack2dPC(self.hp) # 
         self.compress = nn.Conv2d(self.hp.hidden_channels, self.hp.out_channels, 1, 1)
         self.BN_out = nn.BatchNorm2d(self.hp.out_channels)
 
     def forward(self, x, mask=None):
         x = self.adaptor(x)
         x = self.BN_adapt(F.elu(x, inplace=True))
-        z = self.model(x, mask) # z, = self.model(x, mask) if unet
+        z = self.model(x, mask)
         z = self.compress(z)
         z = self.BN_out(F.elu(z, inplace=True)) # need to try without to see if it messes up average gray level
         return z
@@ -290,7 +298,7 @@ class Unet2dPC(nn.Module):
         self.conv_down = PartiaLConv2d(self.nf_input, self.nf_output, self.kernel, self.stride)
         self.BN_down = nn.BatchNorm2d(self.nf_output)
         self.pool = F.max_pool2d
-        self.conv_up = nn.ConvTranspose2d(self.nf_output, self.nf_input, self.kernel, self.stride)
+        self.conv_up = PartialTransposeConv2d(self.nf_output, self.nf_input, self.kernel, self.stride)
         self.unpool = F.max_unpool2d
         self.BN_up = nn.BatchNorm2d(self.nf_input)
 
@@ -316,18 +324,18 @@ class Unet2dPC(nn.Module):
                 if new_mask is not None:
                     new_mask_size = new_mask.size()
                     new_mask, mask_indices = self.pool(new_mask, 2, stride=2, return_indices=True)
-            y, _ = self.unet(y, new_mask)
+            y = self.unet(y, new_mask)
             if self.hp.pool:
                 y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
                 if new_mask is not None:
                     new_mask = self.unpool(new_mask, mask_indices, 2, stride=2, output_size=list(new_mask_size))
         y = self.dropout(y)
-        y = self.conv_up(y)
+        y, _ = self.conv_up(y, new_mask)
         y = self.BN_up(F.elu(y, inplace=True))
         y = torch.cat((x, y), 1)
         y = self.reduce(y)
         y = self.BN_out(F.elu(y, inplace=True))
-        return y, mask
+        return y
 
 class Unet1d(Unet):
     """
@@ -573,7 +581,7 @@ def self_test():
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
-    c2dcs_PC = Container2dPC(hpcs)
+    c2dcs_PC = Container2dPC(hpun)
     c1dun = Container1d(hpun, Unet1d)
     c2dun = Container2d(hpun, Unet2d)
 
