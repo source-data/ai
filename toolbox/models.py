@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from typing import List, Callable, ClassVar
 from collections import namedtuple
 from copy import deepcopy
-from .nvidia import PartialConv2d
+# from .nvidia import PartialConv2d
 
 
 class PartiaLConv2d (nn.Conv2d):
@@ -15,6 +15,7 @@ class PartiaLConv2d (nn.Conv2d):
         self.mask_conv = F.conv2d
 
     def forward(self, input, mask=None):
+        assert input.dim() == 4
         if mask is not None:
             mask_for_input = mask.repeat(1, input.size(1), 1, 1) # same number of features as input
             output = super().forward(input * mask_for_input)
@@ -32,6 +33,7 @@ class PartiaLConv2d (nn.Conv2d):
         else:
             output = super().forward(input)
             new_mask = None
+        assert output.dim() == 4
         return output, new_mask
 
 
@@ -154,14 +156,14 @@ class Container2dPC(nn.Module):
         self.out_channels = self.hp.out_channels
         self.adaptor = nn.Conv2d(self.hp.in_channels, self.hp.hidden_channels, 1, 1)
         self.BN_adapt = nn.BatchNorm2d(self.hp.hidden_channels)
-        self.model = Unet2dPC(self.hp) # CatStack2dPC(self.hp)
+        self.model = CatStack2dPC(self.hp) # Unet2dPC(self.hp) # 
         self.compress = nn.Conv2d(self.hp.hidden_channels, self.hp.out_channels, 1, 1)
         self.BN_out = nn.BatchNorm2d(self.hp.out_channels)
 
     def forward(self, x, mask=None):
         x = self.adaptor(x)
         x = self.BN_adapt(F.elu(x, inplace=True))
-        z, _ = self.model(x, mask)
+        z = self.model(x, mask) # z, = self.model(x, mask) if unet
         z = self.compress(z)
         z = self.BN_out(F.elu(z, inplace=True)) # need to try without to see if it messes up average gray level
         return z
@@ -425,12 +427,13 @@ class ConvBlock2dPC(nn.Module):
         x = self.dropout(x)
         x, mask = self.conv(x, mask)
         x = self.BN(F.elu(x, inplace=True))
+        assert x.dim() == 4
         return x, mask
 
 
 class CatStack2dPC(nn.Module):
     """
-    Base class for a CatStack model made of a concatenated stack of convolution blocks. This class is not meant to be instantiated.
+    Base class for a CatStack model made of a concatenated stack of convolution blocks.
 
     Params:
         hp (HyperparametersCatStack)
@@ -453,6 +456,7 @@ class CatStack2dPC(nn.Module):
         x = torch.cat(x_list, 1)
         x = self.reduce(x)
         y = self.BN(F.elu(x, inplace=True))
+        assert y.dim() == 4
         return y
 
 
@@ -569,7 +573,7 @@ def self_test():
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
-    c2dcs_PC = Container2dPC(hpun)
+    c2dcs_PC = Container2dPC(hpcs)
     c1dun = Container1d(hpun, Unet1d)
     c2dun = Container2d(hpun, Unet2d)
 
