@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from typing import List, Callable, ClassVar
 from collections import namedtuple
 from copy import deepcopy
-from .nvidia import PartialConv2d
 
 
 class Hyperparameters:
@@ -87,17 +86,31 @@ class Container2d(Container):
         super().__init__(hp, model, nn.Conv2d,  nn.BatchNorm2d)
 
 
-class Container2dPC(Container):
+class Container2dPC(nn.Module):
     """
-    2D Container model. 
+   
 
     Params:
         hp (Hyperparameters): the hyperparameters of the model.
-        model (ClassVar): the class of the internal model of the Container.
     """
 
-    def __init__(self, hp: Hyperparameters, model: ClassVar):
-        super().__init__(hp, model, PartialConv2d,  nn.BatchNorm2d)
+    def __init__(self, hp: Hyperparameters):
+        super().__init__()
+        self.hp = hp
+        self.out_channels = self.hp.out_channels
+        self.adaptor = nn.Conv2d(self.hp.in_channels, self.hp.hidden_channels, 1, 1)
+        self.BN_adapt = nn.BatchNorm2d(self.hp.hidden_channels)
+        self.model = CatStack2dPC(self.hp)
+        self.compress = nn.Conv2d(self.hp.hidden_channels, self.hp.out_channels, 1, 1)
+        self.BN_out = nn.BatchNorm2d(self.hp.out_channels)
+
+    def forward(self, x, mask=None):
+        x = self.adaptor(x)
+        x = self.BN_adapt(F.elu(x, inplace=True))
+        z = self.model(x, mask)
+        z = self.compress(z)
+        z = self.BN_out(F.elu(z, inplace=True)) # need to try without to see if it messes up average gray level
+        return z
 
 
 class HyperparametersUnet(Hyperparameters):
@@ -253,6 +266,23 @@ class HyperparametersCatStack(Hyperparameters):
         self.stride = stride
 
 
+class PartiaLConv2d (nn.Conv2d):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, input, mask=None):
+        if mask is not None:
+            output = super().forward(input * mask)
+            with torch.no_grad():
+                mask = super().forward(mask)
+                mask = mask.clamp(0,1).ceil()
+                # do we really need to scale by ratio of true pixels ie mask.nelement() / mask.sum()?
+                output = output * mask
+        else:
+            output = super().forward(input)
+        return output, mask
+
+
 class ConvBlock(nn.Module):
     """
     Base class of a convolution block including a batchnomr of ReLU.
@@ -276,6 +306,56 @@ class ConvBlock(nn.Module):
         x = self.conv(x)
         x = self.BN(F.elu(x, inplace=True))
         return x
+
+class ConvBlock2dPC(nn.Module):
+    """
+    Base class of a partial convolution block including a batchnomr of ReLU.
+    
+    Params:
+        hp (Hyperparameters):
+    """
+
+    def __init__(self, hp: Hyperparameters):
+        self.hp = hp
+        super().__init__()
+        self.dropout = nn.Dropout(self.hp.dropout_rate)
+        self.conv = PartiaLConv2d(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.hp.stride, self.hp.padding)
+        self.BN = nn.BatchNorm2d(self.hp.hidden_channels)
+
+    def forward(self, x, mask=None):
+        x = self.dropout(x)
+        x, mask = self.conv(x, mask)
+        x = self.BN(F.elu(x, inplace=True))
+        return x, mask
+
+
+class CatStack2dPC(nn.Module):
+    """
+    Base class for a CatStack model made of a concatenated stack of convolution blocks. This class is not meant to be instantiated.
+
+    Params:
+        hp (HyperparametersCatStack)
+    """
+
+    def __init__(self, hp: HyperparametersCatStack):
+        super().__init__()
+        self.hp = hp
+        self.conv_stack = nn.ModuleList()
+        for i in range(self.hp.N_layers):
+            self.conv_stack.append(ConvBlock2dPC(hp))
+        self.reduce = nn.Conv2d((1 + self.hp.N_layers) * self.hp.hidden_channels, self.hp.hidden_channels, 1, 1)
+        self.BN = nn.BatchNorm2d(self.hp.hidden_channels)
+
+    def forward(self, x, mask=None):
+        x_list = [x]
+        for i in range(self.hp.N_layers):
+            x, mask  = self.conv_stack[i](x, mask)
+            x_list.append(x)
+        x = torch.cat(x_list, 1)
+        x = self.reduce(x)
+        y = self.BN(F.elu(x, inplace=True))
+        return y
+
 
 
 class CatStack(nn.Module):
@@ -390,18 +470,20 @@ def self_test():
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
-    c2dcs_PC = Container2dPC(hpcs, CatStack2d)
+    c2dcs_PC = Container2dPC(hpcs)
     c1dun = Container1d(hpun, Unet1d)
     c2dun = Container2d(hpun, Unet2d)
 
     x1d = torch.ones(2,hpcs.in_channels,100)
     x2d = torch.ones(2,hpcs.in_channels,256,256)
+    mask = torch.ones_like(x2d)
     cs1d(x1d)
     cs2d(x2d)
     cb1d(x1d)
     cb2d(x2d)
     c1dcs(x1d)
     c2dcs(x2d)
+    c2dcs_PC(x2d, mask)
     c2dcs_PC(x2d)
     c1dun(x1d)
     c2dun(x2d)
