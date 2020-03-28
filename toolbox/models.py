@@ -24,12 +24,12 @@ class PartiaLConv2d (nn.Conv2d):
         self.mask = mask
         if self.mask is not None:
             self.mask_for_input = self.mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-            with torch.no_grad(): # try removing this
-                W = self.ones.to(input) # to move to same cuda device as input when necessary
-                self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
-                self.ratio = self.n / (self.mask_for_output + 1e-8)
-                self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                self.ratio = self.ratio * self.mask_for_output
+            # with torch.no_grad(): # try removing this
+            W = self.ones.to(input) # to move to same cuda device as input when necessary
+            self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
+            self.ratio = self.n / (self.mask_for_output + 1e-8)
+            self.mask_for_output = self.mask_for_output.clamp(0, 1)
+            self.ratio = self.ratio * self.mask_for_output
              # input = input * self.mask # THIS IS WHAT IS KILLING IT
             output = super().forward(input)
             bias_view = self.bias.view(1, self.out_channels, 1, 1)
@@ -61,13 +61,13 @@ class PartialTransposeConv2d(nn.ConvTranspose2d):
         self.mask = mask
         if self.mask is not None:
             self.mask_for_input = self.mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-            with torch.no_grad():
-                W = self.ones.to(input) # to move to same cuda device as input when necessary
-                self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
-                self.ratio = self.n / (self.mask_for_output + 1e-8)
-                self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                self.ratio = self.ratio * self.mask_for_output
-            # input = input * self.mask
+            # with torch.no_grad():
+            W = self.ones.to(input) # to move to same cuda device as input when necessary
+            self.mask_for_output = self.mask_conv(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
+            self.ratio = self.n / (self.mask_for_output + 1e-8)
+            self.mask_for_output = self.mask_for_output.clamp(0, 1)
+            self.ratio = self.ratio * self.mask_for_output
+            # input = input * self.mask # in principle not necessary since first input masked and ouptput masked with newmask
             output = super().forward(input)
             bias_view = self.bias.view(1, self.out_channels, 1, 1)
             # output = ((output - bias_view) * self.ratio) + bias_view
@@ -584,12 +584,12 @@ class CatStack2d(CatStack):
 
 
 def self_test():
-    hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=3, stride=1, in_channels=2, out_channels=3, hidden_channels=2, dropout_rate=0.1)
+    hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=3, stride=1, in_channels=1, out_channels=3, hidden_channels=2, dropout_rate=0.1)
     cs2d = CatStack2d(hpcs)
     cb2d = ConvBlock2d(hpcs)
     cs1d = CatStack1d(hpcs)
     cb1d = ConvBlock1d(hpcs)
-    hpun = HyperparametersUnet(nf_table=[2,2,2], kernel_table=[3,3], stride_table=[1,1,1], pool=True, in_channels=2, hidden_channels=2, out_channels=3, dropout_rate=0.1)
+    hpun = HyperparametersUnet(nf_table=[2,2,2], kernel_table=[3,3], stride_table=[1,1,1], pool=True, in_channels=1, hidden_channels=2, out_channels=3, dropout_rate=0.1)
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
