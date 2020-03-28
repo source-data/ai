@@ -23,17 +23,17 @@ class PartiaLConv2d (nn.Conv2d):
         self.mask = mask
         if self.mask is not None:
             self.mask_for_input = self.mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-            with torch.no_grad(): # try removing this
-                W = self.ones.to(input) # to move to same cuda device as input when necessary
-                self.mask_for_output = F.conv2d(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
-                self.ratio = self.n / (self.mask_for_output + 1e-8)
-                self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                self.ratio = self.ratio * self.mask_for_output
-             # input = input * self.mask # THIS IS WHAT IS KILLING IT
-            output = super().forward(input)
+            # with torch.no_grad(): # try removing this
+            W = self.ones.to(input) # to move to same cuda device as input when necessary
+            self.mask_for_output = F.conv2d(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
+            self.ratio = self.n / (self.mask_for_output + 1e-8)
+            self.mask_for_output = self.mask_for_output.clamp(0, 1)
+            self.ratio = self.ratio * self.mask_for_output
+            # input = input * self.mask # THIS IS WHAT IS KILLING IT
+            output = super(PartiaLConv2d, super).forward(input)
             bias_view = self.bias.view(1, self.out_channels, 1, 1)
             output = ((output - bias_view) * self.ratio) + bias_view
-            # output = output * self.mask_for_output
+            output = output * self.mask_for_output
             self.new_mask = self.mask_for_output.sum(1).clamp(0, 1)
             self.new_mask = self.new_mask.unsqueeze(1)
         else:
@@ -59,17 +59,17 @@ class PartialTransposeConv2d(nn.ConvTranspose2d):
         self.mask = mask
         if self.mask is not None:
             self.mask_for_input = self.mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-            with torch.no_grad():
-                W = self.ones.to(input) # to move to same cuda device as input when necessary
-                self.mask_for_output = F.conv_transpose2d(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
-                self.ratio = self.n / (self.mask_for_output + 1e-8)
-                self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                self.ratio = self.ratio * self.mask_for_output
+            # with torch.no_grad():
+            W = self.ones.to(input) # to move to same cuda device as input when necessary
+            self.mask_for_output = F.conv_transpose2d(self.mask_for_input, W, bias=None, padding=self.padding, stride=self.stride)
+            self.ratio = self.n / (self.mask_for_output + 1e-8)
+            self.mask_for_output = self.mask_for_output.clamp(0, 1)
+            self.ratio = self.ratio * self.mask_for_output
             # input = input * self.mask # in principle not necessary since first input masked and ouptput masked with new mask
-            output = super().forward(input)
+            output = super(PartialTransposeConv2d, self).forward(input)
             bias_view = self.bias.view(1, self.out_channels, 1, 1)
             output = ((output - bias_view) * self.ratio) + bias_view
-            # output = output * self.mask_for_output
+            output = output * self.mask_for_output
             self.new_mask = self.mask_for_output.sum(1).clamp(0, 1)
             self.new_mask = self.new_mask.unsqueeze(1)
         else:
