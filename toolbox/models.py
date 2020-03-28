@@ -33,7 +33,7 @@ class PartiaLConv2d (nn.Conv2d):
             output = super().forward(input)
             bias_view = self.bias.view(1, self.out_channels, 1, 1)
             output = ((output - bias_view) * self.ratio) + bias_view
-            output = output * self.mask_for_output
+            # output = output * self.mask_for_output
             self.new_mask = self.mask_for_output.sum(1).clamp(0, 1)
             self.new_mask = self.new_mask.unsqueeze(1)
         else:
@@ -69,7 +69,7 @@ class PartialTransposeConv2d(nn.ConvTranspose2d):
             output = super().forward(input)
             bias_view = self.bias.view(1, self.out_channels, 1, 1)
             output = ((output - bias_view) * self.ratio) + bias_view
-            output = output * self.mask_for_output
+            # output = output * self.mask_for_output
             self.new_mask = self.mask_for_output.sum(1).clamp(0, 1)
             self.new_mask = self.new_mask.unsqueeze(1)
         else:
