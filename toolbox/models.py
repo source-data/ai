@@ -340,8 +340,8 @@ class Unet2dPC(nn.Module):
         y = self.dropout(y)
         y, _ = self.conv_up(y, new_mask)
         y = self.BN_up(F.elu(y, inplace=True))
-        y = torch.cat((x, y), 1)
-        y = self.reduce(y)
+        # y = torch.cat((x, y), 1)
+        # y = self.reduce(y)
         y = self.BN_out(F.elu(y, inplace=True))
         return y
 
