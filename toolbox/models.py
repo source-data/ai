@@ -34,7 +34,7 @@ class PartiaLConv2d (nn.Conv2d):
             # bias_view = self.bias.view(1, self.out_channels, 1, 1)
             # output = ((output - bias_view) * self.ratio) + bias_view
             output = output * self.mask_for_output
-            self.new_mask = self.mask_for_output.max(1, keepdim=True)[0]
+            self.new_mask = torch.max(mask_for_output, 1, keepdim=True)[0]
         else:
             output = super().forward(input)
             self.new_mask = None
@@ -69,7 +69,7 @@ class PartialTransposeConv2d(nn.ConvTranspose2d):
             # bias_view = self.bias.view(1, self.out_channels, 1, 1)
             # output = ((output - bias_view) * self.ratio) + bias_view
             output = output * self.mask_for_output
-            self.new_mask = self.mask_for_output.max(1, keepdim)[0]
+            self.new_mask = torch.max(mask_for_output, 1, keepdim=True)[0]
         else:
             output = super().forward(input)
             self.new_mask = None
