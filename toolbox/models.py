@@ -7,77 +7,6 @@ from copy import deepcopy
 from .nvidia import PartialConv2d as PC2D
 
 
-class PartiaLConv2d (nn.Conv2d):
-    def __init__(self, *args, **kwargs):
-        super(PartiaLConv2d, self).__init__(*args, **kwargs)
-        self.ones = torch.ones_like(self.weight)
-        self.n = self.ones.size(1) * self.ones.size(2) * self.ones.size(3)
-        self.mask = None
-        self.mask_for_input = None
-        self.mask_for_output = None
-        self.ratio = None
-        self.new_mask = None
-
-    def forward(self, input, mask=None):
-        assert input.dim() == 4
-        self.mask = mask
-        if self.mask is not None:
-            with torch.no_grad(): # try removing this
-                self.mask_for_input = self.mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-                W = self.ones.to(input) # to move to same cuda device as input when necessary
-                self.mask_for_output = F.conv2d(self.mask_for_input, W, padding=self.padding, stride=self.stride)
-                self.ratio = self.n / (self.mask_for_output + 1e-8)
-                self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                self.ratio = self.ratio * self.mask_for_output
-            # input = input * self.mask # THIS IS WHAT IS KILLING IT
-            output = super(PartiaLConv2d, self).forward(input)
-            bias_view = self.bias.view(1, self.out_channels, 1, 1)
-            # output = ((output - bias_view) * self.ratio) + bias_view
-            # output = output * self.mask_for_output
-            self.new_mask = self.mask_for_output.max(1, keepdim=True)[0]
-        else:
-            output = super().forward(input)
-            self.new_mask = None
-        assert output.dim() == 4
-        return output, self.new_mask
-
-
-class PartialTransposeConv2d(nn.ConvTranspose2d):
-    def __init__(self, *args, **kwargs):
-        super(PartialTransposeConv2d, self).__init__(*args, **kwargs)
-        self.ones = torch.ones_like(self.weight)
-        self.n = self.ones.size(1) * self.ones.size(2) * self.ones.size(3)
-        self.mask = None
-        self.mask_for_input = None
-        self.mask_for_output = None
-        self.ratio = None
-        self.new_mask = None
-
-    def forward(self, input, mask=None):
-        assert input.dim() == 4
-        self.mask = mask
-        if self.mask is not None:
-            with torch.no_grad():
-                self.mask_for_input = self.mask.repeat(1, input.size(1), 1, 1) # same number of features as input
-                W = self.ones.to(input) # to move to same cuda device as input when necessary
-                self.mask_for_output = F.conv_transpose2d(self.mask_for_input, W, padding=self.padding, stride=self.stride)
-                self.ratio = self.n / (self.mask_for_output + 1e-8)
-                self.mask_for_output = self.mask_for_output.clamp(0, 1)
-                self.ratio = self.ratio * self.mask_for_output
-            # input = input * self.mask # in principle not necessary since first input masked and ouptput masked with new mask
-            output = super(PartialTransposeConv2d, self).forward(input)
-            bias_view = self.bias.view(1, self.out_channels, 1, 1)
-            # output = ((output - bias_view) * self.ratio) + bias_view
-            # output = output * self.mask_for_output
-            self.new_mask = self.mask_for_output.max(1, keepdim=True)[0]
-        else:
-            output = super().forward(input)
-            self.new_mask = None
-        assert output.dim() == 4
-        return output, self.new_mask
-
-
-
 class Hyperparameters:
     """
     The base class to hold model hyperparameters.
@@ -156,33 +85,6 @@ class Container2d(Container):
 
     def __init__(self, hp: Hyperparameters, model: ClassVar):
         super().__init__(hp, model, nn.Conv2d,  nn.BatchNorm2d)
-
-
-class Container2dPC(nn.Module):
-    """
-   
-
-    Params:
-        hp (Hyperparameters): the hyperparameters of the model.
-    """
-
-    def __init__(self, hp: Hyperparameters):
-        super().__init__()
-        self.hp = hp
-        self.out_channels = self.hp.out_channels
-        self.adaptor = nn.Conv2d(self.hp.in_channels, self.hp.hidden_channels, 1, 1)
-        self.BN_adapt = nn.BatchNorm2d(self.hp.hidden_channels)
-        self.model = Unet2dPC(self.hp) # CatStack2dPC(self.hp) # 
-        self.compress = nn.Conv2d(self.hp.hidden_channels, self.hp.out_channels, 1, 1)
-        self.BN_out = nn.BatchNorm2d(self.hp.out_channels)
-
-    def forward(self, x, mask=None):
-        x = self.adaptor(x)
-        x = self.BN_adapt(F.elu(x, inplace=True))
-        z = self.model(x, mask)
-        z = self.compress(z)
-        z = self.BN_out(F.elu(z, inplace=True)) # need to try without to see if it messes up average gray level
-        return z
 
 
 class HyperparametersUnet(Hyperparameters):
@@ -283,68 +185,6 @@ class Unet(nn.Module):
         return y
 
 
-class Unet2dPC(nn.Module):
-    """
-    Base class of 1D or 2D U-net models. This class is not meant to be instantiated.
-    The U-net is built recursively. The kernel, padding and number of features of each layer is provided as lists in the HyperparamterUnet object.
-
-    Params:
-        hp (HyperparameterUnet): the model hyperparameters.
-    """
-
-    def __init__(self, hp: HyperparametersUnet):
-        super().__init__()
-        self.hp = deepcopy(hp) # pop() will modify lists in place
-        self.nf_input = self.hp.nf_table[0]
-        self.nf_output = self.hp.nf_table[1]
-        self.hp.nf_table.pop(0)
-        self.kernel = self.hp.kernel_table.pop(0)
-        self.stride = self.hp.stride_table.pop(0)
-        self.dropout_rate = self.hp.dropout_rate
-
-        self.dropout = nn.Dropout(self.dropout_rate)
-        self.conv_down = PartiaLConv2d(self.nf_input, self.nf_output, self.kernel, self.stride)
-        self.BN_down = nn.BatchNorm2d(self.nf_output)
-        self.pool = F.max_pool2d
-        self.conv_up = PartialTransposeConv2d(self.nf_output, self.nf_input, self.kernel, self.stride)
-        self.unpool = F.max_unpool2d
-        self.BN_up = nn.BatchNorm2d(self.nf_input)
-
-        if len(self.hp.nf_table) > 1:
-            self.unet = self.__class__(self.hp)
-        else:
-            self.unet = None
-
-        self.reduce = nn.Conv2d(2*self.nf_input, self.nf_input, 1, 1)
-        self.BN_out = nn.BatchNorm2d(self.nf_input)
-
-
-    def forward(self, x, mask=None):
-
-        y = self.dropout(x)
-        y, new_mask = self.conv_down(y, mask)
-        y = self.BN_down(F.elu(y, inplace=True))
-
-        if self.unet is not None:
-            if self.hp.pool:
-                y_size = y.size()
-                y, indices = self.pool(y, 2, stride=2, return_indices=True)
-                if new_mask is not None:
-                    new_mask_size = new_mask.size()
-                    new_mask, mask_indices = self.pool(new_mask, 2, stride=2, return_indices=True)
-            y = self.unet(y, new_mask)
-            if self.hp.pool:
-                y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
-                if new_mask is not None:
-                    new_mask = self.unpool(new_mask, mask_indices, 2, stride=2, output_size=list(new_mask_size))
-        y = self.dropout(y)
-        y, _ = self.conv_up(y, new_mask)
-        y = self.BN_up(F.elu(y, inplace=True))
-        # y = torch.cat((x, y), 1)
-        # y = self.reduce(y)
-        y = self.BN_out(F.elu(y, inplace=True))
-        return y
-
 class Unet1d(Unet):
     """
     1D U-net. 
@@ -424,58 +264,6 @@ class ConvBlock(nn.Module):
         x = self.BN(F.elu(x, inplace=True))
         return x
 
-class ConvBlock2dPC(nn.Module):
-    """
-    Base class of a partial convolution block including a batchnomr of ReLU.
-    
-    Params:
-        hp (Hyperparameters):
-    """
-
-    def __init__(self, hp: Hyperparameters):
-        self.hp = hp
-        super().__init__()
-        self.dropout = nn.Dropout(self.hp.dropout_rate)
-        self.conv = PartiaLConv2d(self.hp.hidden_channels, self.hp.hidden_channels, self.hp.kernel, self.hp.stride, self.hp.padding) #, multi_channel=True, return_mask=True)
-        self.BN = nn.BatchNorm2d(self.hp.hidden_channels)
-
-    def forward(self, x, mask=None):
-        x = self.dropout(x)
-        x, mask = self.conv(x, mask)
-        x = self.BN(F.elu(x, inplace=True))
-        assert x.dim() == 4
-        return x, mask
-
-
-class CatStack2dPC(nn.Module):
-    """
-    Base class for a CatStack model made of a concatenated stack of convolution blocks.
-
-    Params:
-        hp (HyperparametersCatStack)
-    """
-
-    def __init__(self, hp: HyperparametersCatStack):
-        super().__init__()
-        self.hp = hp
-        self.conv_stack = nn.ModuleList()
-        for i in range(self.hp.N_layers):
-            self.conv_stack.append(ConvBlock2dPC(hp))
-        self.reduce = nn.Conv2d((1 + self.hp.N_layers) * self.hp.hidden_channels, self.hp.hidden_channels, 1, 1)
-        self.BN = nn.BatchNorm2d(self.hp.hidden_channels)
-
-    def forward(self, x, mask=None):
-        x_list = [x]
-        for i in range(self.hp.N_layers):
-            x, mask  = self.conv_stack[i](x, mask)
-            x_list.append(x)
-        x = torch.cat(x_list, 1)
-        x = self.reduce(x)
-        y = self.BN(F.elu(x, inplace=True))
-        assert y.dim() == 4
-        return y
-
-
 
 class CatStack(nn.Module):
     """
@@ -499,8 +287,10 @@ class CatStack(nn.Module):
 
     def forward(self, x):
         x_list = [x]
+        x_size = x.size(-1)
         for i in range(self.hp.N_layers):
             x = self.conv_stack[i](x)
+            x = F.interpolate(x, x_size, mode='nearest')
             x_list.append(x)
         x = torch.cat(x_list, 1)
         x = self.reduce(x)
@@ -580,7 +370,7 @@ class CatStack2d(CatStack):
 
 
 def self_test():
-    hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=3, stride=1, in_channels=1, out_channels=3, hidden_channels=2, dropout_rate=0.1)
+    hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=0, stride=1, in_channels=1, out_channels=3, hidden_channels=2, dropout_rate=0.1)
     cs2d = CatStack2d(hpcs)
     cb2d = ConvBlock2d(hpcs)
     cs1d = CatStack1d(hpcs)
@@ -589,23 +379,17 @@ def self_test():
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
-    c2dcs_PC = Container2dPC(hpun)
     c1dun = Container1d(hpun, Unet1d)
     c2dun = Container2d(hpun, Unet2d)
 
-    x1d = torch.ones(2, hpcs.in_channels, 100)
-    x2d = torch.ones(2, hpcs.in_channels, 10, 10)
-    mask = torch.randint(0, 2,(2, 1, 10, 10)).float()
-    cs1d(x1d)
-    cs2d(x2d)
-    cb1d(x1d)
-    cb2d(x2d)
-    c1dcs(x1d)
-    c2dcs(x2d)
-    c2dcs_PC(x2d, mask)
-    c2dcs_PC(x2d)
-    c1dun(x1d)
-    c2dun(x2d)
+    cs1d(torch.ones(2, hpcs.hidden_channels, 100))
+    cs2d(torch.ones(2, hpcs.hidden_channels, 10, 10))
+    cb1d(torch.ones(2, hpcs.hidden_channels, 100))
+    cb2d(torch.ones(2, hpcs.hidden_channels, 10, 10))
+    c1dcs(torch.ones(2, hpcs.in_channels, 100))
+    c2dcs(torch.ones(2, hpcs.in_channels, 10, 10))
+    c1dun(torch.ones(2, hpcs.in_channels, 100))
+    c2dun(torch.ones(2, hpcs.in_channels, 10, 10))
 
 
     print("It seems to work: all classes could be instantiated and input forwarded.")
