@@ -174,7 +174,8 @@ class Unet(nn.Module):
                 y, indices = self.pool(y, 2, stride=2, return_indices=True)
             y = self.unet(y)
             if self.hp.pool:
-                y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
+                y = F.interpolate(y, y_size[-1], mode='nearest')
+                # y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
 
         y = self.dropout(y)
         y = self.conv_up(y)
@@ -276,10 +277,11 @@ class CatStack(nn.Module):
         conv_block (ClassVar): the class of convolution block to build the stack. 
     """
 
-    def __init__(self, hp: HyperparametersCatStack, conv: ClassVar, bn: ClassVar, conv_block: ClassVar):
+    def __init__(self, hp: HyperparametersCatStack, conv: ClassVar, bn: ClassVar, conv_block: ClassVar, max_pool: Callable):
         super().__init__()
         self.hp = hp
         self.conv_stack = nn.ModuleList()
+        self.max_pool = max_pool
         for i in range(self.hp.N_layers):
             self.conv_stack.append(conv_block(hp))
         self.reduce = conv((1 + self.hp.N_layers) * self.hp.hidden_channels, self.hp.hidden_channels, 1, 1)
@@ -290,6 +292,7 @@ class CatStack(nn.Module):
         x_size = x.size(-1)
         for i in range(self.hp.N_layers):
             x = self.conv_stack[i](x)
+            x = self.max_pool(x, 2, 2)
             x = F.interpolate(x, x_size, mode='nearest')
             x_list.append(x)
         x = torch.cat(x_list, 1)
@@ -342,7 +345,7 @@ class CatStack1d(CatStack):
     """
 
     def __init__(self, hp: HyperparametersCatStack):
-        super().__init__(hp, nn.Conv1d,  nn.BatchNorm1d, ConvBlock1d)
+        super().__init__(hp, nn.Conv1d,  nn.BatchNorm1d, ConvBlock1d, F.max_pool1d)
 
 
 class ConvBlock2d(ConvBlock):
@@ -366,7 +369,7 @@ class CatStack2d(CatStack):
     """
 
     def __init__(self, hp: HyperparametersCatStack):
-        super().__init__(hp, nn.Conv2d, nn.BatchNorm2d, ConvBlock2d)
+        super().__init__(hp, nn.Conv2d, nn.BatchNorm2d, ConvBlock2d, F.max_pool2d)
 
 
 def self_test():
