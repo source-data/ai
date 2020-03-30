@@ -109,15 +109,17 @@ class HyperparametersUnet(Hyperparameters):
         kernel_table (List[int]): a list of the kernels for each layer.
         stride_table (List[int]): a list of the strides for each layer.
         pool (bool): indicate whether to include a pool/unpool step between layers.
+        skip (bool): set to True (default) to connect down and up branches.
     """
 
-    def __init__(self, nf_table: List[int], kernel_table: List[int], stride_table: List[int], pool:bool, **kwargs):
+    def __init__(self, nf_table: List[int], kernel_table: List[int], stride_table: List[int], pool:bool, skip:bool, **kwargs):
         super().__init__(**kwargs)
         self.hidden_channels = nf_table[0]
         self.nf_table = nf_table
         self.kernel_table = kernel_table
         self.stride_table = stride_table
         self.pool = pool
+        self.skip = skip
 
 
 class Unet(nn.Module):
@@ -133,10 +135,9 @@ class Unet(nn.Module):
         bn (ClassVar): the class of the BatchNorm layer (nn.BatchNorm1d or nn.BatchNorm2d).
         pool (ClassVar): the class of the pooling layer (nn.Pool1d or nn.Pool2d).
         unpool (ClassVar): the class of the unpooling layer (nn.Pool1d or nn.Pool2d).
-        skip (bool): set to True (default) to connect down and up branches
     """
 
-    def __init__(self, hp: HyperparametersUnet, conv: ClassVar, convT: ClassVar, bn: ClassVar, pool: Callable, unpool: Callable, skip:bool=True):
+    def __init__(self, hp: HyperparametersUnet, conv: ClassVar, convT: ClassVar, bn: ClassVar, pool: Callable, unpool: Callable):
         super().__init__()
         self.hp = deepcopy(hp) # pop() will modify lists in place
         self.nf_input = self.hp.nf_table[0]
@@ -145,6 +146,7 @@ class Unet(nn.Module):
         self.kernel = self.hp.kernel_table.pop(0)
         self.stride = self.hp.stride_table.pop(0)
         self.dropout_rate = self.hp.dropout_rate
+        self.skip = self.hp.skip
 
         self.dropout = nn.Dropout(self.dropout_rate)
         self.conv_down = conv(self.nf_input, self.nf_output, self.kernel, self.stride)
@@ -159,7 +161,6 @@ class Unet(nn.Module):
         else:
             self.unet = None
 
-        self.skip = skip
         if self.skip:
             self.reduce = conv(2*self.nf_input, self.nf_input, 1, 1)
         self.BN_out = bn(self.nf_input)
