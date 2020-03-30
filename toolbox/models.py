@@ -133,9 +133,10 @@ class Unet(nn.Module):
         bn (ClassVar): the class of the BatchNorm layer (nn.BatchNorm1d or nn.BatchNorm2d).
         pool (ClassVar): the class of the pooling layer (nn.Pool1d or nn.Pool2d).
         unpool (ClassVar): the class of the unpooling layer (nn.Pool1d or nn.Pool2d).
+        skip (bool): set to True (default) to connect down and up branches
     """
 
-    def __init__(self, hp: HyperparametersUnet, conv: ClassVar, convT: ClassVar, bn: ClassVar, pool: Callable, unpool: Callable):
+    def __init__(self, hp: HyperparametersUnet, conv: ClassVar, convT: ClassVar, bn: ClassVar, pool: Callable, unpool: Callable, skip:bool=True):
         super().__init__()
         self.hp = deepcopy(hp) # pop() will modify lists in place
         self.nf_input = self.hp.nf_table[0]
@@ -158,7 +159,9 @@ class Unet(nn.Module):
         else:
             self.unet = None
 
-        self.reduce = conv(2*self.nf_input, self.nf_input, 1, 1)
+        self.skip = skip
+        if self.skip:
+            self.reduce = conv(2*self.nf_input, self.nf_input, 1, 1)
         self.BN_out = bn(self.nf_input)
 
 
@@ -180,8 +183,9 @@ class Unet(nn.Module):
         y = self.dropout(y)
         y = self.conv_up(y)
         y = self.BN_up(F.elu(y, inplace=True))
-        y = torch.cat((x, y), 1)
-        y = self.reduce(y)
+        if self.skip:
+            y = torch.cat((x, y), 1)
+            y = self.reduce(y)
         y = self.BN_out(F.elu(y, inplace=True))
         return y
 
