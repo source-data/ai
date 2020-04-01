@@ -256,7 +256,7 @@ class Unet(nn.Module):
         else:
             self.unet = None
 
-        self.reduce = conv(2*self.nf_input, self.nf_input, 1, 1)
+        self.reduce = conv(self.nf_input + self.nf_output, self.nf_input, 1, 1)
         self.BN_out = bn(self.nf_input)
 
 
