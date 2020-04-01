@@ -154,7 +154,7 @@ class Unet(nn.Module):
         else:
             self.unet = None
         if self.skip:
-            self.conv_up = convT(2 * self.nf_output, self.nf_input, self.kernel, self.stride)
+            self.conv_up = convT(self.nf_input + self.nf_output, self.nf_input, self.kernel, self.stride)
         else:
             self.conv_up = convT(self.nf_output, self.nf_input, self.kernel, self.stride)
         self.BN_out = bn(self.nf_input)
