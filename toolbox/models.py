@@ -97,28 +97,26 @@ class HyperparametersUnet(Hyperparameters):
             nf_table=[2,4,8, 16], # 1st layer: 2 -> 4 channels, 2nd layer: 4 -> 8 channels; 3rd layer: 8 -> 16 channels.
             kernel_table=[3,3,3], # the three layers use same kernel 3
             stride_table=[1,1,1], # the three layers use the same stride 1
-            pool=True, # pooling switched on
             in_channels=2, # params from base class
             hidden_channels=2, # params from base class
             out_channels=3, # params from base class
-            dropout_rate=0.1 # params from base class
+            dropout_rate=0.1. # params from base class
+            skip = True,
         )
 
     Params and Attributes:
         nf_table (List[int]): the number of channels (features) of each layers in the form [in_channels, out/in_channels, in/out_channels, in/out_channels, ...]
         kernel_table (List[int]): a list of the kernels for each layer.
         stride_table (List[int]): a list of the strides for each layer.
-        pool (bool): indicate whether to include a pool/unpool step between layers.
         skip (bool): set to True (default) to connect down and up branches.
     """
 
-    def __init__(self, nf_table: List[int], kernel_table: List[int], stride_table: List[int], pool:bool, skip:bool, **kwargs):
+    def __init__(self, nf_table: List[int], kernel_table: List[int], stride_table: List[int], skip:bool, **kwargs):
         super().__init__(**kwargs)
         self.hidden_channels = nf_table[0]
         self.nf_table = nf_table
         self.kernel_table = kernel_table
         self.stride_table = stride_table
-        self.pool = pool
         self.skip = skip
 
 
@@ -151,42 +149,31 @@ class Unet(nn.Module):
         self.dropout = nn.Dropout(self.dropout_rate)
         self.conv_down = conv(self.nf_input, self.nf_output, self.kernel, self.stride)
         self.BN_down = bn(self.nf_output)
-        self.pool = pool
-        self.conv_up = convT(self.nf_output, self.nf_input, self.kernel, self.stride)
-        self.unpool = unpool
-        self.BN_up = bn(self.nf_input)
-
         if len(self.hp.nf_table) > 1:
             self.unet = self.__class__(self.hp)
         else:
             self.unet = None
-
         if self.skip:
-            self.reduce = conv(2*self.nf_input, self.nf_input, 1, 1)
+            self.conv_up = convT(2 * self.nf_output, self.nf_input, self.kernel, self.stride)
+        else:
+            self.conv_up = convT(self.nf_output, self.nf_input, self.kernel, self.stride)
         self.BN_out = bn(self.nf_input)
 
 
     def forward(self, x):
 
         y = self.dropout(x)
+        y_size = y.size()
         y = self.conv_down(y)
         y = self.BN_down(F.elu(y, inplace=True))
 
         if self.unet is not None:
-            if self.hp.pool:
-                y_size = y.size()
-                y, indices = self.pool(y, 2, stride=2, return_indices=True)
             y = self.unet(y)
-            if self.hp.pool:
-                y = F.interpolate(y, y_size[-1], mode='nearest')
-                # y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
+        y = F.interpolate(y, y_size[-1], mode='nearest')
 
-        y = self.dropout(y)
-        y = self.conv_up(y)
-        y = self.BN_up(F.elu(y, inplace=True))
         if self.skip:
             y = torch.cat((x, y), 1)
-            y = self.reduce(y)
+        y = self.conv_up(y)
         y = self.BN_out(F.elu(y, inplace=True))
         return y
 
@@ -383,7 +370,7 @@ def self_test():
     cb2d = ConvBlock2d(hpcs)
     cs1d = CatStack1d(hpcs)
     cb1d = ConvBlock1d(hpcs)
-    hpun = HyperparametersUnet(nf_table=[2,2,2], kernel_table=[3,3], stride_table=[1,1,1], pool=True, in_channels=1, hidden_channels=2, out_channels=3, dropout_rate=0.1)
+    hpun = HyperparametersUnet(nf_table=[2,2,2], kernel_table=[5,3], stride_table=[3,2,1], in_channels=1, hidden_channels=2, out_channels=3, dropout_rate=0.1, skip=True)
     un2d = Unet2d(hpun)
     c1dcs = Container1d(hpcs, CatStack1d)
     c2dcs = Container2d(hpcs, CatStack2d)
