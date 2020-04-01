@@ -267,16 +267,17 @@ class Unet(nn.Module):
         y = self.BN_down(F.elu(y, inplace=True))
 
         if self.unet is not None:
-            if self.hp.pool:
-                y_size = y.size()
-                y, indices = self.pool(y, 2, stride=2, return_indices=True)
+            # if self.hp.pool:
+            #     y_size = y.size()
+            #     y, indices = self.pool(y, 2, stride=2, return_indices=True)
             y = self.unet(y)
-            if self.hp.pool:
-                y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
+            # if self.hp.pool:
+            #     y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
 
         y = self.dropout(y)
         y = self.conv_up(y)
         y = self.BN_up(F.elu(y, inplace=True))
+        y = F.interpolate(y, x.size(-1), mode='nearest')
         y = torch.cat((x, y), 1)
         y = self.reduce(y)
         y = self.BN_out(F.elu(y, inplace=True))
