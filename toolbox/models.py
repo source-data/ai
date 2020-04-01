@@ -262,7 +262,6 @@ class Unet(nn.Module):
 
     def forward(self, x):
 
-        x_size = x.size()
         y = self.dropout(x)
         y = self.conv_down(y)
         y = self.BN_down(F.elu(y, inplace=True))
@@ -278,7 +277,7 @@ class Unet(nn.Module):
         y = self.dropout(y)
         y = self.conv_up(y)
         y = self.BN_up(F.elu(y, inplace=True))
-        y = F.interpolate(y, (x_size[2], x_size[3], mode='nearest') # hm will not work in 1d
+        y = F.interpolate(y, x.size(-1), mode='nearest') # hm will not work in 1d
         y = torch.cat((x, y), 1)
         y = self.reduce(y)
         y = self.BN_out(F.elu(y, inplace=True))
