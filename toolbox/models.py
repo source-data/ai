@@ -162,15 +162,13 @@ class Unet(nn.Module):
 
     def forward(self, x):
 
+        x_size = x.size()
         y = self.dropout(x)
-        y_size = y.size()
         y = self.conv_down(y)
         y = self.BN_down(F.elu(y, inplace=True))
-
         if self.unet is not None:
             y = self.unet(y)
-        y = F.interpolate(y, y_size[-1], mode='nearest')
-
+        y = F.interpolate(y, x_size[-1], mode='nearest')
         if self.skip:
             y = torch.cat((x, y), 1)
         y = self.conv_up(y)
@@ -269,27 +267,47 @@ class CatStack(nn.Module):
         conv_block (ClassVar): the class of convolution block to build the stack. 
     """
 
-    def __init__(self, hp: HyperparametersCatStack, conv: ClassVar, bn: ClassVar, conv_block: ClassVar, max_pool: Callable):
+    def __init__(self, hp: HyperparametersUnet, conv: ClassVar, convT: ClassVar, bn: ClassVar, pool: Callable, unpool: Callable):
         super().__init__()
-        self.hp = hp
-        self.conv_stack = nn.ModuleList()
-        self.max_pool = max_pool
-        for i in range(self.hp.N_layers):
-            self.conv_stack.append(conv_block(hp))
-        self.reduce = conv((1 + self.hp.N_layers) * self.hp.hidden_channels, self.hp.hidden_channels, 1, 1)
-        self.BN = bn(self.hp.hidden_channels)
+        self.hp = deepcopy(hp) # pop() will modify lists in place
+        self.nf_input = self.hp.nf_table[0]
+        self.nf_output = self.hp.nf_table[1]
+        self.hp.nf_table.pop(0)
+        self.kernel = self.hp.kernel_table.pop(0)
+        self.stride = self.hp.stride_table.pop(0)
+        self.dropout_rate = self.hp.dropout_rate
+
+        self.dropout = nn.Dropout(self.dropout_rate)
+        self.conv_down = conv(self.nf_input, self.nf_output, self.kernel, self.stride)
+        self.BN_down = bn(self.nf_output)
+        self.conv_up = convT(self.nf_output, self.nf_input, self.kernel, self.stride)
+        self.BN_up = bn(self.nf_input)
+
+        if len(self.hp.nf_table) > 1:
+            self.unet = self.__class__(self.hp)
+        else:
+            self.unet = None
+
+        self.reduce = conv(2*self.nf_input, self.nf_input, 1, 1)
+        self.BN_out = bn(self.nf_input)
+
 
     def forward(self, x):
-        x_list = [x]
-        x_size = x.size(-1)
-        for i in range(self.hp.N_layers):
-            x = self.conv_stack[i](x)
-            x = self.max_pool(x, 2, 2)
-            x = F.interpolate(x, x_size, mode='nearest')
-            x_list.append(x)
-        x = torch.cat(x_list, 1)
-        x = self.reduce(x)
-        y = self.BN(F.elu(x, inplace=True))
+
+        y = self.dropout(x)
+        y = self.conv_down(y)
+        y = self.BN_down(F.elu(y, inplace=True))
+
+        if self.unet is not None:
+            y = self.unet(y)
+
+        y = self.dropout(y)
+        y = self.conv_up(y)
+        y = self.BN_up(F.elu(y, inplace=True))
+        y = F.interpolate(y, x.size(-1), mode='nearest')
+        y = torch.cat((x, y), 1)
+        y = self.reduce(y)
+        y = self.BN_out(F.elu(y, inplace=True))
         return y
 
 
