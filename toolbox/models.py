@@ -256,7 +256,7 @@ class Unet(nn.Module):
         else:
             self.unet = None
 
-        self.reduce = conv(self.nf_input + self.nf_output, self.nf_input, 1, 1)
+        self.reduce = conv(self.nf_input + self.nf_output, self.nf_input, 3, 1, 1)
         self.BN_out = bn(self.nf_input)
 
 
@@ -277,7 +277,7 @@ class Unet(nn.Module):
         # y = self.dropout(y)
         # y = self.conv_up(y)
         # y = self.BN_up(F.elu(y, inplace=True))
-        y = F.interpolate(y, x.size(-1), mode='nearest') # hm will not work in 1d
+        y = F.interpolate(y, x.size(-1), mode='nearest')
         y = torch.cat((x, y), 1)
         y = self.reduce(y)
         y = self.BN_out(F.elu(y, inplace=True))
