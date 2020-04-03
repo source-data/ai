@@ -35,7 +35,6 @@ class PartiaLConv2d (nn.Conv2d):
             output = ((output - bias_view) * self.ratio) + bias_view
             output = output * self.mask_for_output
             self.new_mask = self.mask_for_output.max(1, keepdim=True)[0] # why [0]?
-            
         else:
             output = super().forward(input)
             self.new_mask = None
@@ -266,7 +265,7 @@ class Unet(nn.Module):
 
         y = self.dropout(x)
         y = self.conv_down(y)
-        y = self.BN_down(F.elu(y, inplace=True))
+        y = self.BN_down(F.relu(y, inplace=True)) # ReLU on down branch
 
         if self.unet is not None:
             if self.hp.pool:
@@ -278,7 +277,7 @@ class Unet(nn.Module):
 
         # y = self.dropout(y) # optional
         y = self.conv_up(y)
-        y = self.BN_up(F.elu(y, inplace=True))
+        y = self.BN_up(F.elu(y, inplace=True)) # Elu on up branch
         # y = F.interpolate(y, x.size(-1), mode='nearest')
         y = torch.cat((x, y), 1)
         y = self.reduce(y)
@@ -596,19 +595,17 @@ def self_test():
     c1dun = Container1d(hpun, Unet1d)
     c2dun = Container2d(hpun, Unet2d)
 
-    x1d = torch.ones(2, hpcs.in_channels, 100)
-    x2d = torch.ones(2, hpcs.in_channels, 10, 10)
-    mask = torch.randint(0, 2,(2, 1, 10, 10)).float()
-    cs1d(x1d)
-    cs2d(x2d)
-    cb1d(x1d)
-    cb2d(x2d)
-    c1dcs(x1d)
-    c2dcs(x2d)
-    c2dcs_PC(x2d, mask)
-    c2dcs_PC(x2d)
-    c1dun(x1d)
-    c2dun(x2d)
+    cs1d(torch.ones(2, hpcs.hidden_channels, 100))
+    cs2d(torch.ones(2, hpcs.hidden_channels, 10, 10))
+    cb1d(torch.ones(2, hpcs.hidden_channels, 100))
+    cb2d(torch.ones(2, hpcs.hidden_channels, 10, 10))
+    c1dcs(torch.ones(2, hpcs.in_channels, 100))
+    c2dcs(torch.ones(2, hpcs.in_channels, 10, 10))
+    c1dun(torch.ones(2, hpcs.in_channels, 100))
+    c2dun(torch.ones(2, hpcs.in_channels, 10, 10))
+
+    c2dcs_PC(torch.ones(2, hpcs.in_channels, 10, 10),  torch.randint(0, 2,(2, 1, 10, 10)).float())
+
 
 
     print("It seems to work: all classes could be instantiated and input forwarded.")
