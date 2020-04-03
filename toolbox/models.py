@@ -32,9 +32,10 @@ class PartiaLConv2d (nn.Conv2d):
             # input = input * self.mask # THIS IS WHAT IS KILLING IT
             output = super(PartiaLConv2d, self).forward(input)
             bias_view = self.bias.view(1, self.out_channels, 1, 1)
-            # output = ((output - bias_view) * self.ratio) + bias_view
-            # output = output * self.mask_for_output
-            self.new_mask = self.mask_for_output.max(1, keepdim=True)[0]
+            output = ((output - bias_view) * self.ratio) + bias_view
+            output = output * self.mask_for_output
+            self.new_mask = self.mask_for_output.max(1, keepdim=True)[0] # why [0]?
+            
         else:
             output = super().forward(input)
             self.new_mask = None
