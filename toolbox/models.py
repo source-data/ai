@@ -270,10 +270,12 @@ class Unet(nn.Module):
         if self.unet is not None:
             if self.hp.pool:
                 y_size = y.size()
-                y, indices = self.pool(y, 2, stride=2, return_indices=True)
+                # y, indices = self.pool(y, 2, stride=2, return_indices=True)
+                y = F.avg_pool2d(y, 2, 2)
             y = self.unet(y)
             if self.hp.pool:
-                y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
+                # y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
+                y = F.interpolate(y, y_size)
 
         # y = self.dropout(y) # optional
         y = self.conv_up(y)
