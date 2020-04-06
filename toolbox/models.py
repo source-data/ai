@@ -275,7 +275,7 @@ class Unet(nn.Module):
             y = self.unet(y)
             if self.hp.pool:
                 # y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
-                y = F.interpolate(y, y_size)
+                y = F.interpolate(y, (y_size(2), y_size(3)))
 
         # y = self.dropout(y) # optional
         y = self.conv_up(y)
