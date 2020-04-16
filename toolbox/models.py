@@ -229,11 +229,10 @@ class Unet(nn.Module):
         conv (ClassVar): the class of the convolution (nn.Conv1d or nn.Conv2d) used for the descending branch of the U-net.
         convT (ClassVar): the class of the transpose convolution (nn.ConvTranspose1d or nn.ConvTranspose2d) used for the ascending branch of the U-net.
         bn (ClassVar): the class of the BatchNorm layer (nn.BatchNorm1d or nn.BatchNorm2d).
-        pool (ClassVar): the class of the pooling layer (nn.Pool1d or nn.Pool2d).
-        unpool (ClassVar): the class of the unpooling layer (nn.Pool1d or nn.Pool2d).
+        pool (ClassVar): the class of the pooling layer (F.AvgPool1d or F.AvgPool2d).
     """
 
-    def __init__(self, hp: HyperparametersUnet, conv: ClassVar, convT: ClassVar, bn: ClassVar, pool: Callable, unpool: Callable):
+    def __init__(self, hp: HyperparametersUnet, conv: ClassVar, convT: ClassVar, bn: ClassVar, pool: Callable):
         super().__init__()
         self.hp = deepcopy(hp) # pop() will modify lists in place
         self.nf_input = self.hp.nf_table[0]
@@ -248,7 +247,6 @@ class Unet(nn.Module):
         self.BN_down = bn(self.nf_output)
         self.pool = pool
         self.conv_up = convT(self.nf_output, self.nf_input, self.kernel, self.stride)
-        self.unpool = unpool
         self.BN_up = bn(self.nf_input)
 
         if len(self.hp.nf_table) > 1:
@@ -270,12 +268,10 @@ class Unet(nn.Module):
         if self.unet is not None:
             if self.hp.pool:
                 y_size = y.size()
-                # y, indices = self.pool(y, 2, stride=2, return_indices=True)
-                y = F.avg_pool2d(y, 2, 2)
+                y = self.pool(y, 2, 2)
             y = self.unet(y)
             if self.hp.pool:
-                # y = self.unpool(y, indices, 2, stride=2, output_size=list(y_size)) # list(y_size) is to fix a bug in torch 1.0.1; not need in 1.4.0
-                y = F.interpolate(y, (y_size[2], y_size[3]))
+                y = F.interpolate(y, y_size[-1])
 
         # y = self.dropout(y) # optional
         y = self.conv_up(y)
@@ -358,7 +354,7 @@ class Unet1d(Unet):
     """
 
     def __init__(self, hp: HyperparametersUnet):
-        super().__init__(hp, nn.Conv1d, nn.ConvTranspose1d, nn.BatchNorm1d, F.max_pool1d, F.max_unpool1d)
+        super().__init__(hp, nn.Conv1d, nn.ConvTranspose1d, nn.BatchNorm1d, F.avg_pool1d)
 
 
 class Unet2d(Unet):
@@ -370,7 +366,7 @@ class Unet2d(Unet):
     """
 
     def __init__(self, hp: HyperparametersUnet):
-        super().__init__(hp, nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d, F.max_pool2d, F.max_unpool2d)
+        super().__init__(hp, nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d, F.avg_pool2d)
 
 
 class HyperparametersCatStack(Hyperparameters):
