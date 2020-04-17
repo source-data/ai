@@ -522,7 +522,7 @@ class Autoencoder1d(nn.Module):
         super(Autoencoder1d, self).__init__()
         self.in_channels = hp.in_channels
         self.hp = hp
-        self.embed = Container1d(hp=self.hp, model)
+        self.embed = Container1d(hp=self.hp, model=model)
         self.reduce = nn.Conv1d(self.embed.out_channels, self.in_channels, 1, 1)
         
     def forward(self, x):
