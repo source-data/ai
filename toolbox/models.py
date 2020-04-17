@@ -518,11 +518,11 @@ class Autoencoder1d(nn.Module):
         hp (HyperParametersCatStack): hyperparameters of the internal CatStack1d model.
     """
 
-    def __init__(self, hp: HyperparametersCatStack):
+    def __init__(self, hp: Hyperparameters, model: ClassVar = CatStack1d):
         super(Autoencoder1d, self).__init__()
         self.in_channels = hp.in_channels
         self.hp = hp
-        self.embed = Container1d(hp=self.hp, model=CatStack1d)
+        self.embed = Container1d(hp=self.hp, model)
         self.reduce = nn.Conv1d(self.embed.out_channels, self.in_channels, 1, 1)
         
     def forward(self, x):
