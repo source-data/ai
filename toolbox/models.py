@@ -518,7 +518,7 @@ class Autoencoder1d(nn.Module):
         hp (HyperParametersCatStack): hyperparameters of the internal CatStack1d model.
     """
 
-    def __init__(self, hp: Hyperparameters, model: ClassVar = CatStack1d):
+    def __init__(self, hp: Hyperparameters, model: ClassVar):
         super(Autoencoder1d, self).__init__()
         self.in_channels = hp.in_channels
         self.hp = hp
