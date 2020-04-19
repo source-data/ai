@@ -135,7 +135,7 @@ def load_autoencoder(path, sub_module_class: ClassVar = CatStack1d):
         the traind model (Autoencode1d)
     """
 
-    model = load_model_from_class(path, model_class=Autoencoder1d, sub_module_class=sub_module_class)
+    model = load_model_from_class(path, model_class=Autoencoder1d, model=sub_module_class)
     return model
 
 def self_test():
