@@ -72,7 +72,7 @@ def unzip_model(model_path: str) -> Tuple[str, str]:
     return hp_path, model_path
 
 
-def load_model_from_class(path:str, model_class: ClassVar) -> nn.Module:
+def load_model_from_class(path:str, model_class: ClassVar, **kwargs) -> nn.Module:
     """
     Generic function to load a model of type model_class.
 
@@ -89,7 +89,7 @@ def load_model_from_class(path:str, model_class: ClassVar) -> nn.Module:
         hp = pickle.load(hyperparams)
     print(f"trying to build model {model_class.__name__} with hyperparameters:")
     print(hp)
-    model =  model_class(hp)
+    model =  model_class(hp, **kwargs)
     state_dict = torch.load(model_path)
     model.load_state_dict(state_dict)
     os.remove(model_path)
@@ -97,7 +97,7 @@ def load_model_from_class(path:str, model_class: ClassVar) -> nn.Module:
     return model
 
 
-def load_container(path: str, container: ClassVar, sub_module: ClassVar) -> Container:
+def load_container(path: str, container: ClassVar) -> Container:
     """
     A function to load a Container model.
 
@@ -123,17 +123,19 @@ def load_container(path: str, container: ClassVar, sub_module: ClassVar) -> Cont
     os.remove(hp_path)
     return model
 
-def load_autoencoder(path):
+def load_autoencoder(path, sub_module_class: ClassVar = CatStack1d):
     """
     A function to load an Autoencoder1d model.
 
     Params:
         path (str): path to the model zip archive.
+        sub_module_class (ClassVar): the class of the submodule used in the autoencoder (default: CatStack)
 
     Returns:
         the traind model (Autoencode1d)
     """
-    model = load_model_from_class(path, model_class = Autoencoder1d)
+
+    model = load_model_from_class(path, model_class=Autoencoder1d, sub_module_class=sub_module_class)
     return model
 
 def self_test():
