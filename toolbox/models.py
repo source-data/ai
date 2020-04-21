@@ -273,7 +273,7 @@ class Unet(nn.Module):
             if self.hp.pool:
                 y = F.interpolate(y, y_size[-1])
 
-        y = self.dropout(y) # optional
+        # y = self.dropout(y) # optional
         y = self.conv_up(y)
         y = self.BN_up(F.elu(y, inplace=True)) # Elu on up branch
         # y = F.interpolate(y, x.size(-1), mode='nearest')
