@@ -3,6 +3,7 @@
 
 import os
 import io
+import uuid
 import pickle
 import torch
 from torch import nn
@@ -71,6 +72,24 @@ def hp_model_path(myzip: ZipFile) -> Tuple[str, str]:
     return hp_path, model_path
 
 
+def load_hp(z, hp_path: str) -> Hyperparameters:
+    with z.open(hp_path, 'r') as hyperparams:
+        hp = pickle.load(hyperparams)
+    return hp
+
+
+def load_state_dict(z, model_path: str) -> torch.Tensor:
+        # with z.open(model_path, mode='r') as state_file: # in memory works only on python > 3.7.2 because ZipExtFile needs to implement seek() and tell()
+        temp = '/tmp/' + str(uuid.uuid1())
+        z.extract(model_path, temp)
+        model_path = os.path.join(temp, model_path)
+        with open(model_path, 'rb') as state_file:
+            state_dict = torch.load(state_file)
+        import pdb; pdb.set_trace()
+        rmtree(temp)
+        return state_dict
+
+
 def load_model_from_class(path: str, model_class: ClassVar, **kwargs) -> nn.Module:
     """
     Generic function to load a model of type model_class.
@@ -85,14 +104,8 @@ def load_model_from_class(path: str, model_class: ClassVar, **kwargs) -> nn.Modu
     print(f"\n\nloading {path}\n\n")
     with ZipFile(path, mode='r') as z:
         hp_path, model_path = hp_model_path(z)
-        with z.open(hp_path, 'r') as hyperparams:
-            hp = pickle.load(hyperparams)
-        # with z.open(model_path, mode='r') as state_file: # works only on python > 3.7.2 because ZipExtFile needs to implement seek() and tell()
-        z.extract(model_path, '/tmp')
-        model_path = os.path.join('/tmp', model_path)
-        with open(model_path, 'rb') as state_file:
-            state_dict = torch.load(state_file)
-        os.remove(model_path)
+        hp = load_hp(z, hp_path)
+        state_dict = load_state_dict(z, model_path)
     print(f"trying to build model {model_class.__name__} with hyperparameters:")
     print(hp)
     model = model_class(hp, **kwargs)
@@ -116,18 +129,11 @@ def load_container(path: str, container: ClassVar, sub_module: ClassVar) -> Cont
     print(f"\n\nloading {path}\n\n")
     with ZipFile(path, mode='r') as z:
         hp_path, model_path = hp_model_path(z)
-        with z.open(hp_path, 'r') as hyperparams:
-            hp = pickle.load(hyperparams)
-        # with z.open(model_path, mode='r') as state_file: # works only on python > 3.7.2 because ZipExtFile needs to implement seek() and tell()
-        z.extract(model_path, '/tmp')
-        model_path = os.path.join('/tmp', model_path)
-        with open(model_path, 'rb') as state_file:
-            state_dict = torch.load(state_file)
-        os.remove(model_path)
+        hp = load_hp(z, hp_path)
+        state_dict = load_state_dict(z, model_path)
     print(f"trying to build model ({container.__name__} with {sub_module.__name__}) with hyperparameters:")
     print(hp)
     model = container(hp, sub_module)
-
     model.load_state_dict(state_dict)
     return model
 
@@ -148,13 +154,13 @@ def load_autoencoder(path, sub_module_class: ClassVar = CatStack1d):
 
 def self_test():
     try:
-        os.mkdir('/tmp/test')
+        os.mkdir('test_importexport')
         x = torch.zeros(2, 1, 4)
 
         hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=3, stride=1, in_channels=1, out_channels=1, hidden_channels=2, dropout_rate=0.1)
         c1dcs = Container1d(hpcs, CatStack1d)
         y = c1dcs(x)
-        saved_path = export_model(c1dcs, '/tmp/test', 'test_1')
+        saved_path = export_model(c1dcs, 'test_importexport', 'test_1')
         print(f"saved {saved_path}")
         loaded = load_container(saved_path, Container1d, CatStack1d)
         print(loaded)
@@ -162,7 +168,7 @@ def self_test():
         hpun = HyperparametersUnet(nf_table=[2,2,2], kernel_table=[3,3], stride_table=[1,1,1], pool=True, in_channels=1, hidden_channels=2, out_channels=1, dropout_rate=0.1)
         c2dun = Container2d(hpun, Unet2d)
         y = c1dcs(x)
-        saved_path = export_model(c2dun, '/tmp/test', 'test_2')
+        saved_path = export_model(c2dun, 'test_importexport', 'test_2')
         print(f"saved {saved_path}")
         loaded = load_container(saved_path, Container2d, Unet2d)
         print(loaded)
@@ -171,14 +177,14 @@ def self_test():
         hpcs = HyperparametersCatStack(N_layers=2, kernel=7, padding=3, stride=1, in_channels=1, out_channels=1, hidden_channels=2, dropout_rate=0.1)
         a1dcs = Autoencoder1d(hpcs, CatStack1d)
         y = a1dcs(x)
-        saved_path = export_model(a1dcs, '/tmp/test', 'test_3')
+        saved_path = export_model(a1dcs, 'test_importexport', 'test_3')
         print(f"saved {saved_path}")
         loaded = load_autoencoder(saved_path)
         print(loaded)
 
 
     finally:
-        rmtree('/tmp/test')
+        rmtree('test_importexport')
         print("Cleaned up.")
 
 def main ():
