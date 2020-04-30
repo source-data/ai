@@ -85,7 +85,6 @@ def load_state_dict(z, model_path: str) -> torch.Tensor:
         model_path = os.path.join(temp, model_path)
         with open(model_path, 'rb') as state_file:
             state_dict = torch.load(state_file)
-        import pdb; pdb.set_trace()
         rmtree(temp)
         return state_dict
 
